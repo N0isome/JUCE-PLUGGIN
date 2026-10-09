@@ -45,7 +45,7 @@ El binario Windows de prueba y su instalación están descritos en
 | `Source/CaptureCore.h` | Cola SPSC preasignada y protocolo de exclusión al terminar una toma |
 | `Tests/CaptureCoreTests.cpp` | Orden estéreo, wrap, overflow y Stop concurrente |
 | `Tests/CaptureIntegrationTests.cpp` | WAV real, ganancia, monitor, estado y ciclo de vida JUCE |
-| `.github/workflows/build.yml` | Matriz Windows/macOS con JUCE 8.0.6 y 7.0.12 |
+| `.github/workflows/build.yml` | Matriz Windows/macOS con JUCE 7.0.12 |
 | `VALIDATION.md` | Resultados y alcance de las comprobaciones ejecutadas |
 
 ## Flujo de audio
@@ -112,7 +112,7 @@ mediante el wrapper de JUCE.
 - Primera configuración con internet: FetchContent descarga JUCE **7.0.12**.
   El SDK VST3 viene incluido con JUCE; AU usa los SDK de Apple.
 
-No necesitas Projucer. Los comandos se ejecutan desde la carpeta `LoopCapture`.
+No necesitas Projucer. Los comandos se ejecutan desde la raíz de este repositorio (en el ZIP de fuentes, desde la carpeta `LoopCapture`).
 Este repositorio obtiene JUCE 7.0.12 mediante FetchContent. El ZIP de fuentes
 enlazado arriba incluye `vendor/JUCE` (7.0.12), que CMake utiliza por defecto
 sin descargarlo. Para otra versión deja `LOOPCAPTURE_JUCE_PATH` vacío y configura
@@ -174,11 +174,11 @@ cmake -S . -B build-juce7 -DLOOPCAPTURE_JUCE_TAG=7.0.12
 ```
 
 Usa carpetas de build distintas al cambiar versión/toolchain. La compatibilidad
-de código abarca JUCE 7.0.12 y 8.0.6; la matriz CI incluida comprueba esas dos.
+de código abarca JUCE 7.0.12 y 8.0.6; la matriz CI incluida usa JUCE 7.0.12.
 
 | Opción | Valor por defecto | Uso |
 | --- | --- | --- |
-| `LOOPCAPTURE_JUCE_TAG` | `8.0.6` | Versión descargada |
+| `LOOPCAPTURE_JUCE_TAG` | `7.0.12` | Versión descargada |
 | `LOOPCAPTURE_JUCE_PATH` | vacío | Checkout local, evita descarga |
 | `LOOPCAPTURE_BUILD_TESTS` | `ON` | Core y pruebas JUCE |
 | `LOOPCAPTURE_CORE_TESTS_ONLY` | `OFF` | Pruebas portables sin JUCE |
@@ -257,12 +257,12 @@ no necesitas activar esa función para el grabador interno de JUCE PLUGGIN.
 - Cada archivo usa un UUID y queda en `tempDirectory/LoopCapture`. El plugin
   no lo elimina al cerrar; evita que un host que importa por referencia lo pierda.
 - **Copia/importa la muestra a la carpeta de tu proyecto del DAW.** La carpeta
-  temporal puede limpiarse por el sistema. `Show WAV` abre su ubicación para
+  temporal puede limpiarse por el sistema. `Ver carpeta` abre su ubicación para
   copiarla manualmente. La limpieza de tomas viejas es manual en esta versión.
 - El estado del proyecto serializa ganancia/monitor mediante APVTS. No serializa
   el audio ni reabre automáticamente una toma temporal al cargar el proyecto.
 - El host y su wrapper deciden qué destinos aceptan un WAV y cómo lo importan.
-  Si el arrastre no funciona, usa `Show WAV` e importa el archivo desde el host.
+  Si el arrastre no funciona, usa `Ver carpeta` e importa el archivo desde el host.
   Ejecuta host y explorador con el mismo nivel de permisos en Windows.
 - El límite de render y frecuencia es por instancia; pueden coexistir varias
   instancias con sus propias colas, worker y archivos.
