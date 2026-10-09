@@ -6,10 +6,16 @@
    `JUCE PLUGGIN.vst3`. Conserva su estructura `Contents/x86_64-win/`.
 2. Copia **la carpeta completa** a `C:\Program Files\Common Files\VST3`.
    Windows puede pedir autorización al copiar a esa carpeta.
-   También puedes copiarla a una carpeta propia, por ejemplo
-   `Documentos\FR3DO\VST3`, y agregar esa ruta en el Plugin Manager de FL Studio.
-3. Abre FL Studio → **Options → Manage plugins → Find installed plugins**.
-   Busca **JUCE PLUGGIN** y actívalo como favorito.
+   FL Studio requiere una ubicación estándar para VST3; agregar Downloads u otra
+   carpeta personalizada a sus rutas de búsqueda no sustituye esta instalación.
+   La carpeta instalada debe quedar en:
+   `C:\Program Files\Common Files\VST3\JUCE PLUGGIN.vst3`.
+   Copia el bundle completo con Contents, no solo el archivo binario interior.
+3. Abre FL Studio → **Options → Manage plugins**. Activa **Verify plugins**
+   y **Rescan plugins with errors**, luego pulsa **Find installed plugins**
+   (o **Find more plugins**, según la versión). Busca **JUCE PLUGGIN** y
+   actívalo como favorito. Si no aparece, revisa el estado/error del escaneo
+   y confirma que estás usando FL Studio de 64 bits.
 4. Carga el plugin en un slot de efectos del **Mixer**, en el canal que recibe
    el audio que quieres capturar. El plugin es un efecto estéreo, no un instrumento.
 5. Si quieres audio de otra aplicación: envía esa aplicación al cable virtual
