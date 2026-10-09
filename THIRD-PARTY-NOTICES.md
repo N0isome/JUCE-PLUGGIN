@@ -4,7 +4,6 @@ El código de JUCE PLUGGIN de esta entrega se distribuye bajo **GNU GPL v3**.
 La licencia completa está en `LICENSE.txt`. Las fuentes correspondientes
 se distribuyen junto al binario en la sección Software del portafolio,
 incluidas las fuentes de JUCE 7.0.12 necesarias para compilar el plugin en `LoopCapture/vendor/JUCE`.
-En este repositorio, CMake obtiene esa misma dependencia mediante FetchContent.
 
 - **JUCE 7.0.12** — Copyright Raw Material Software Limited.
   Para esta entrega se usa su opción GPL v3. Se conserva `JUCE7-LICENSE.md`
@@ -22,3 +21,6 @@ En este repositorio, CMake obtiene esa misma dependencia mediante FetchContent.
 
 El nombre JUCE PLUGGIN identifica esta demo de FR3DO. No implica respaldo
 ni afiliación con JUCE, Steinberg o Image-Line.
+
+SpaceGrotesk.ttf: instancia estática de peso 500 derivada de la fuente variable
+Space Grotesk mediante fontTools; conserva su licencia SIL OFL 1.1.

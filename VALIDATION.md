@@ -107,3 +107,18 @@ sample-flow.cjs con la firma nueva.
 Estos resultados no reemplazan la prueba de carga y operación dentro de
 FL Studio/Windows. No se ejecutó el VST3 Windows, el selector de carpeta
 nativo ni el drag and drop externo. No hay binario AU/macOS en esta entrega.
+
+## Corrección: interfaz nativa equivalente a la web
+
+El editor se recompiló y enlazó como VST3 Windows x64/JUCE 7.0.12. Se revisaron
+exports y DLL de sistema. La integración JUCE 8.0.6 en Linux pasó nuevamente,
+incluyendo preview con Monitor apagado, duración completa y resampling
+48 → 44.1 kHz, además de grabación PCM24, APVTS, Stop, overflow y destrucción.
+Se renderizaron e inspeccionaron Rack oscuro, Rack claro, Mesa claro y una toma
+terminada usando el editor C++ real (no HTML). Esas capturas se obtuvieron en
+Linux con JUCE 8; no certifican el renderizador Windows/GDI.
+
+El usuario confirmó que la versión anterior cargó en FL Studio mediante una
+captura. La revisión nueva no se ha ejecutado en FL Studio desde este entorno;
+el arrastre entre aplicaciones y el diálogo nativo de guardado aún requieren
+la comprobación en Windows.

@@ -41,7 +41,7 @@ El binario Windows de prueba y su instalación están descritos en
 | --- | --- |
 | `CMakeLists.txt` | `juce_add_plugin`, JUCE fijado a una versión, formatos y pruebas |
 | `Source/PluginProcessor.h/.cpp` | APVTS, ganancia, passthrough, grabación, thumbnail y estado |
-| `Source/PluginEditor.h/.cpp` | Interfaz redimensionable, medidores, Timer y arrastre nativo |
+| `Source/PluginEditor.h/.cpp` | Interfaz de la web en JUCE, medidores, Timer y arrastre nativo |
 | `Source/CaptureCore.h` | Cola SPSC preasignada y protocolo de exclusión al terminar una toma |
 | `Tests/CaptureCoreTests.cpp` | Orden estéreo, wrap, overflow y Stop concurrente |
 | `Tests/CaptureIntegrationTests.cpp` | WAV real, ganancia, monitor, estado y ciclo de vida JUCE |
@@ -70,8 +70,8 @@ mediante el wrapper de JUCE.
 
 - Formato: WAV **24-bit PCM**, estéreo, a la frecuencia del DAW. Cumple la
   alternativa de 24 bits del requerimiento; no se ofrece un selector 32-bit float.
-- La ganancia es automatizable: `inputGain`, -60 a +18 dB, default 0 dB,
-  suavizada en 15 ms. `monitor` también usa APVTS, default activado y rampa de 5 ms.
+- La ganancia es automatizable: `inputGain`, -24 a +12 dB, default 0 dB,
+  suavizada en 15 ms. `monitor` también usa APVTS, default desactivado y rampa de 5 ms.
 - La grabación es **posterior a Input Gain y anterior al mute de Monitor**.
   El audio por encima de 0 dBFS satura al convertirse a PCM; el indicador CLIP
   queda visible un segundo. Reduce Input Gain si aparece.
@@ -330,3 +330,25 @@ para distribuir esa variante se deben respetar sus términos, incluida su vía A
   sin requerir instalación en el sistema. Sus licencias OFL están en `Assets/Fonts`.
 - La reproducción y el canal de prueba de la demo web pertenecen a la demo;
   el plugin nativo conserva el monitoreo de entrada del procesador.
+
+## Interfaz nativa actualizada
+
+![JUCE PLUGGIN, interfaz Rack nativa](docs/interface-rack.png)
+
+El VST3 reproduce la estructura y la paleta de la demo web: entrada, dial y rango
+de ganancia, consola estéreo con reloj y medidores, onda de la toma finalizada,
+Escuchar, Guardar como, Descargar WAV y CANAL 02 para probar el arrastre. Tiene
+Rack/Mesa y modo claro/oscuro, en un lienzo estable de 1032 × 848 unidades lógicas.
+El host adapta esas unidades a su escala DPI; el editor no cambia de tamaño al
+actualizar medidores ni al alternar la vista.
+
+Pulsa Conectar para habilitar la grabación. Los selectores de entrada representan
+el canal del DAW; el dispositivo/cable se configura en el Mixer. La captura
+nativa permite hasta 30 minutos por toma. Descargar WAV y Guardar como exportan
+el archivo con el selector nativo. No abren un navegador.
+
+La preescucha usa una cola SPSC y lectura/resampling en el worker. Se mezcla
+después de grabación y Monitor, y no se incorpora a la toma. Se detiene al
+iniciar otra grabación, cambiar el motor, hacer bypass o cerrar el editor.
+Space Grotesk se incrusta como instancia estática de peso 500 para conservar
+el aspecto de la web también con el renderizador GDI de Windows.

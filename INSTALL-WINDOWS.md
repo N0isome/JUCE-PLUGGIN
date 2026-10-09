@@ -22,11 +22,16 @@
    y selecciona su salida de grabación como **entrada estéreo del Mixer**.
    El driver/dispositivo de FL debe ofrecer esa entrada. El plugin recibe
    lo que le entrega el DAW; no selecciona por sí mismo el audio del sistema.
-6. Verifica movimiento en L/R, ajusta Gain y pulsa **Record**. Pulsa **Stop**
+6. Pulsa **Conectar** para habilitar la captura del canal del DAW. Verifica
+   movimiento en L/R, ajusta Ganancia y pulsa **Record**. Pulsa **Stop**
    y espera a que termine de escribir el WAV. La toma aparecerá abajo.
 7. Arrastra la onda inferior a Playlist, Sampler o un destino que admita WAV.
-   Usa **Guardar como** para elegir una carpeta y un nombre. Si el host no
-   admite el arrastre externo, usa **Ver carpeta** e importa el WAV desde allí.
+   Usa **Escuchar** para reproducir la toma a través del DAW. **Guardar como**
+   y **Descargar WAV** abren el diálogo nativo para exportar a la carpeta elegida.
+   Si el host no admite el arrastre, importa ese archivo desde su carpeta.
+8. El área **CANAL 02** permite soltar un WAV y escucharlo como prueba de arrastre.
+   La entrada/cable virtual se configura en el Mixer del DAW; no hay captura
+   de pestañas ni selección de dispositivo del sistema dentro del efecto.
 
 El plugin no abre navegador, pestañas ni selectores de pantalla. No necesita
 conexión a internet, instalar fuentes ni abrir la demo web para grabar.
@@ -56,3 +61,12 @@ https://nicolas-cortez.vercel.app/#software
 Esta demo se distribuye bajo GNU GPL v3. Consulta `LICENSE.txt` y
 `THIRD-PARTY-NOTICES.md`. Las fuentes incrustadas tienen licencia SIL OFL.
 La aplicación y el nombre del proyecto no implican afiliación con JUCE o Steinberg.
+
+## Reemplazar la versión anterior
+
+Cierra FL Studio por completo. Reemplaza la carpeta completa
+`C:\Program Files\Common Files\VST3\JUCE PLUGGIN.vst3` con la incluida en este
+ZIP. Reabre el DAW, activa Verify plugins y Rescan previously verified plugins
+en Plugin Manager y vuelve a escanear. La cabecera ahora muestra un selector
+Rack/Mesa, y la entrada, ganancia y consola están en tres columnas como la web.
+Esta revisión incluye Escuchar y CANAL 02; no conserva la interfaz anterior.
