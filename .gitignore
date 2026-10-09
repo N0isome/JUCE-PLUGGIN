@@ -1,0 +1,10 @@
+build*/
+.DS_Store
+.idea/
+.vscode/
+JUCE/
+*.wav
+vendor/
+*.zip
+*.vst3/
+*.component/
