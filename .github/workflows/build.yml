@@ -7,13 +7,22 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, macos-latest]
-        juce: [7.0.12]
+        include:
+          - os: windows-latest
+            juce: "7.0.12"
+          - os: macos-15
+            juce: "8.0.6"
     runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
+      - name: Select macOS toolchain
+        if: runner.os == 'macOS'
+        run: echo "DEVELOPER_DIR=/Applications/Xcode_16.4.app/Contents/Developer" >> "$GITHUB_ENV"
       - name: Configure
-        run: cmake -S . -B build -DLOOPCAPTURE_JUCE_TAG=${{ matrix.juce }} -DLOOPCAPTURE_BUILD_TESTS=ON
+        run: cmake -S . -B build "-DLOOPCAPTURE_JUCE_TAG=${{ matrix.juce }}" "-DLOOPCAPTURE_BUILD_TESTS=ON" "-DCMAKE_BUILD_TYPE=Release"
       - name: Build
         run: cmake --build build --config Release --parallel 2
       - name: Test
@@ -22,3 +31,4 @@ jobs:
         with:
           name: JUCE-PLUGGIN-${{ matrix.os }}-JUCE-${{ matrix.juce }}
           path: build/LoopCapture_artefacts/Release/
+          if-no-files-found: error
