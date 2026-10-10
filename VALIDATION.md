@@ -122,3 +122,26 @@ El usuario confirmó que la versión anterior cargó en FL Studio mediante una
 captura. La revisión nueva no se ha ejecutado en FL Studio desde este entorno;
 el arrastre entre aplicaciones y el diálogo nativo de guardado aún requieren
 la comprobación en Windows.
+
+## JUCE PLUGGIN 1.1: captura del sistema (9 de octubre, Chile)
+
+- CTest local JUCE 8.0.6: 2/2 PASS (núcleo e integración).
+- Nuevas pruebas: PCM8/16/24/32, float32, NaN/Inf, mono/estéreo/par frontal,
+  stride inválido y paquetes silenciosos; 25 pares de frecuencias de muestreo.
+- Antialias: tono de 40 kHz a 96 kHz convertido a 44.1 kHz, RMS < 0.001.
+- 100 reinicios de fuente concurrentes con callbacks; no reutilización de muestras.
+- WAV de fuente sintética: L/R y frecuencia comprobados; sustituye la entrada
+  del host. Monitor automatizado no puede realimentar el loopback.
+- Fallo de fuente: cierre sin nuevos callbacks y conservación del prefijo WAV.
+- Núcleo con AddressSanitizer/UndefinedBehaviorSanitizer: PASS; detector de fugas
+  desactivado porque el sandbox no permite la inspección /proc necesaria.
+- Núcleo con ThreadSanitizer: PASS. Estas instrumentaciones cubren el núcleo
+  de colas/protocolo; no todos los módulos JUCE ni los drivers del sistema.
+- VST3 Windows JUCE 7.0.12 Release compilado y enlazado con MinGW; sin backend
+  sintético de pruebas dentro del binario de producción.
+- Editor nativo renderizado en cuatro vistas con JUCE/Linux; inspección visual.
+- CI nativa Windows/macOS: https://github.com/N0isome/JUCE-PLUGGIN/actions/runs/38013056341
+
+No se ha ejecutado FL Studio ni una captura audible de hardware Windows en este
+entorno. La prueba automática de endpoint inválido en Windows verifica manejo
+de errores de la API, no una señal real. macOS mantiene entrada del DAW.

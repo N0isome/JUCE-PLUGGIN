@@ -281,6 +281,7 @@ void Capture::captureDevice()
             BYTE* data = nullptr; UINT frames = 0; DWORD flags = 0;
             hr = capture->GetBuffer(&data, &frames, &flags, nullptr, nullptr);
             if (FAILED(hr)) break;
+            if (hr == AUDCLNT_S_BUFFER_EMPTY) { hr = S_OK; break; }
             const bool discontinuity = !firstPacket && (flags & AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY) != 0;
             firstPacket = false; bool accepted = !discontinuity;
             for (UINT offset = 0; accepted && offset < frames; offset += 8192)
