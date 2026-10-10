@@ -66,6 +66,13 @@ public:
             == writeIndex.load(std::memory_order_acquire);
     }
 
+    std::size_t available() const noexcept
+    {
+        // Consumer-only query: producer may publish additional frames afterwards.
+        const auto r = readIndex.load(std::memory_order_relaxed);
+        return static_cast<std::size_t>(writeIndex.load(std::memory_order_acquire) - r);
+    }
+
     // Only the consumer, after the producer has been excluded by SessionGate.
     void resetWhileInactive() noexcept
     {

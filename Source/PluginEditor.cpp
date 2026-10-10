@@ -272,10 +272,22 @@ LoopCaptureAudioProcessorEditor::LoopCaptureAudioProcessorEditor(LoopCaptureAudi
     recordButton.setComponentID("record");
     viewSelect.addItem("Rack", 1); viewSelect.addItem("Mesa", 2); viewSelect.setSelectedId(1, juce::dontSendNotification);
     viewSelect.setName("Interfaz de prueba");
-    sourceSelect.addItem("Entrada / cable virtual", 1); sourceSelect.addItem(juce::String::fromUTF8("Audio sistema vía DAW"), 2);
-    sourceSelect.setSelectedId(1, juce::dontSendNotification);
-    sourceSelect.setTooltip("Selecciona el cable virtual en la entrada del Mixer de FL Studio.");
-    deviceSelect.addItem(juce::String::fromUTF8("Canal estéreo del DAW"), 1); deviceSelect.setSelectedId(1, juce::dontSendNotification); deviceSelect.setEnabled(false);
+    sourceSelect.addItem("Entrada del DAW / cable", 1);
+    if (systemaudio::Capture::supported()) sourceSelect.addItem("Audio sistema (Windows)", 2);
+    sourceSelect.setSelectedId(processor.usesSystemInput() ? 2 : 1, juce::dontSendNotification);
+    sourceSelect.setTooltip("Windows: captura la salida seleccionada. DAW: recibe el canal del Mixer.");
+    sourceSelect.onChange = [this]
+    {
+        processor.disconnectInput(); connected = false; exportMessage.clear();
+        connectButton.setButtonText("Conectar"); refreshInputDevices(); timerCallback();
+    };
+    deviceSelect.onChange = [this]
+    {
+        if (deviceSelect.getSelectedId() == 10000) { refreshInputDevices(); return; }
+        if (connected) { processor.disconnectInput(); connected = false; connectButton.setButtonText("Conectar"); }
+        timerCallback();
+    };
+    refreshInputDevices();
     for (auto* label : { &statusLabel, &sampleName, &sampleMeta }) label->setFont(uiFont(label == &sampleName ? 16.0f : 14.0f));
     sampleMeta.setFont(uiFont(12, true)); timeLabel.setFont(uiFont(19, true));
     timeLabel.setJustificationType(juce::Justification::centredRight);
@@ -289,8 +301,14 @@ LoopCaptureAudioProcessorEditor::LoopCaptureAudioProcessorEditor(LoopCaptureAudi
     monitorAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(p.parameters, "monitor", monitorButton);
     connectButton.onClick = [this]
     {
-        connected = !connected; exportMessage.clear();
-        if (!connected) { processor.stopRecording(); processor.stopPreview(); }
+        exportMessage.clear();
+        if (connected) { processor.disconnectInput(); connected = false; }
+        else
+        {
+            const auto index = deviceSelect.getSelectedId() - 2;
+            const auto id = index >= 0 && index < static_cast<int>(inputDevices.size()) ? inputDevices[static_cast<std::size_t>(index)].id : juce::String {};
+            connected = processor.connectInput(sourceSelect.getSelectedId() == 2, id);
+        }
         connectButton.setButtonText(connected ? "Desconectar" : "Conectar"); timerCallback();
     };
     recordButton.onClick = [this]
@@ -307,7 +325,7 @@ LoopCaptureAudioProcessorEditor::LoopCaptureAudioProcessorEditor(LoopCaptureAudi
     saveButton.onClick = [this] { saveSample(); };
     themeButton.onClick = [this] { lightMode = !lightMode; applyTheme(); };
     viewSelect.onChange = [this] { mesaView = viewSelect.getSelectedId() == 2; resized(); repaint(); };
-    connected = isBusy(processor.getSnapshot().state);
+    connected = isBusy(processor.getSnapshot().state) || processor.systemInputStatus().active;
     connectButton.setButtonText(connected ? "Desconectar" : "Conectar");
     applyTheme();
     // Match the web rack geometry. Host DPI scales this stable logical canvas.
@@ -333,9 +351,15 @@ void LoopCaptureAudioProcessorEditor::timerCallback()
     sampleMeta.setText(s.hasUsableFile && !busy ? formatTime(seconds) + juce::String::fromUTF8(" · ") + juce::String(s.sampleRate / 1000, 1) + juce::String::fromUTF8(" kHz · 24-bit PCM")
                       : juce::String::fromUTF8("La toma aparecerá aquí al pulsar Stop."), juce::dontSendNotification);
     const auto recording = s.state == capture::State::recording || s.state == capture::State::starting;
+    const bool system = sourceSelect.getSelectedId() == 2;
+    const auto systemStatus = processor.systemInputStatus();
+    if (system && connected && systemStatus.failed)
+    { connected = false; connectButton.setButtonText("Conectar"); }
+    sourceSelect.setEnabled(!busy); deviceSelect.setEnabled(system && !busy);
+    monitorButton.setEnabled(!system);
     recordButton.setToggleState(recording, juce::dontSendNotification);
     recordButton.setButtonText(s.state == capture::State::stopping ? juce::String::fromUTF8("Finalizando…") : recording ? "Stop" : "Record");
-    recordButton.setEnabled(connected && s.state != capture::State::stopping && processor.getSampleRate() > 0);
+    recordButton.setEnabled(connected && (!system || systemStatus.active) && s.state != capture::State::stopping && processor.getSampleRate() > 0);
     const auto ready = s.hasUsableFile && !busy;
     playButton.setEnabled(ready); revealButton.setEnabled(ready); saveButton.setEnabled(ready && !saving);
     playButton.setButtonText(processor.isPreviewPlaying() ? "Detener" : "Escuchar");
@@ -345,12 +369,32 @@ void LoopCaptureAudioProcessorEditor::timerCallback()
     if (!exportMessage.isEmpty()) status = exportMessage;
     else if (s.state == capture::State::error) status = s.message;
     else if (s.state == capture::State::stopping) status = juce::String::fromUTF8("Finalizando archivo WAV…");
-    else if (recording) status = juce::String::fromUTF8("Grabando la entrada estéreo del canal.");
+    else if (system && systemStatus.failed) status = systemStatus.message;
+    else if (recording) status = system ? "Grabando audio de la salida Windows." : juce::String::fromUTF8("Grabando la entrada estéreo del canal.");
     else if (ready) status = "Muestra lista. Arrastra el WAV a otro canal del DAW.";
-    else if (connected) status = "Entrada del DAW conectada. Pulsa Record para capturar.";
+    else if (connected) status = system ? systemStatus.message : "Entrada del DAW conectada. Pulsa Record para capturar.";
     else status = juce::String::fromUTF8("Conecta una fuente para habilitar la grabación.");
     statusLabel.setText(status, juce::dontSendNotification);
     statusLabel.setColour(juce::Label::textColourId, s.state == capture::State::error ? c.warning : c.muted);
+}
+void LoopCaptureAudioProcessorEditor::refreshInputDevices()
+{
+    deviceSelect.clear(juce::dontSendNotification); inputDevices.clear();
+    if (sourceSelect.getSelectedId() == 2)
+    {
+        juce::String error; inputDevices = systemaudio::Capture::devices(error);
+        deviceSelect.addItem("Salida predeterminada", 1);
+        for (std::size_t i = 0; i < inputDevices.size(); ++i)
+            deviceSelect.addItem(inputDevices[i].name, static_cast<int>(i) + 2);
+        deviceSelect.addSeparator(); deviceSelect.addItem("Actualizar dispositivos", 10000);
+        if (error.isNotEmpty()) exportMessage = error;
+    }
+    else deviceSelect.addItem(juce::String::fromUTF8("Canal estéreo del DAW"), 1);
+    int selected = 1;
+    const auto id = processor.getSystemDeviceId();
+    for (std::size_t i = 0; i < inputDevices.size(); ++i)
+        if (inputDevices[i].id == id) selected = static_cast<int>(i) + 2;
+    deviceSelect.setSelectedId(selected, juce::dontSendNotification);
 }
 void LoopCaptureAudioProcessorEditor::playSample(const juce::File& file)
 {

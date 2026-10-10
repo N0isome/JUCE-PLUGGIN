@@ -12,13 +12,13 @@ y permite guardar el archivo o arrastrarlo a otra pista.
 - [Fuentes de la entrega Windows, con JUCE 7.0.12](https://nicolas-cortez.vercel.app/software/juce-pluggin/LoopCapture-JUCE-Source.zip)
 - [Instalación y ruteo en FL Studio](INSTALL-WINDOWS.md)
 
-El plugin nativo no necesita navegador. El audio del sistema se conecta al
-DAW mediante un cable virtual o una entrada disponible del driver de audio.
+El plugin nativo no necesita navegador. En Windows, el audio del sistema puede capturarse directamente con WASAPI loopback.
+También se puede conectar al DAW mediante un cable virtual o una entrada del driver.
 La demo web usa los permisos de captura del navegador.
 
 **Estado:** VST3 Windows x64 compilado y verificado; pendiente de probar en
 FL Studio. macOS VST3/AU tiene configuración de compilación, pero esta entrega
-no incluye un binario Mac probado. [Validaciones y límites](VALIDATION.md).
+no incluye un binario Mac probado con un DAW. [Validaciones y límites](VALIDATION.md).
 
 ## Código y compilación
 
@@ -60,9 +60,9 @@ El binario Windows de prueba y su instalación están descritos en
 7. Stop excluye productores nuevos, espera que termine cualquier copia en curso,
    drena la cola y cierra el WAV. Solo entonces el archivo puede arrastrarse.
 
-**El plugin recibe audio del host.** Un VST3/AU no selecciona VB-Cable, BlackHole
-o Loopback desde `processBlock` ni captura automáticamente toda la salida del
-sistema. No se abre un `AudioDeviceManager` dentro del plugin; el DAW administra
+**Fuente Entrada del DAW:** el plugin recibe audio del host. **Audio sistema
+(Windows):** un worker WASAPI captura la salida seleccionada y entrega muestras
+al callback mediante una cola preasignada. No se abre un `AudioDeviceManager` dentro del plugin; el DAW administra
 el dispositivo y el reloj. La aplicación Standalone sí tiene selección de audio
 mediante el wrapper de JUCE.
 
@@ -342,8 +342,8 @@ Rack/Mesa y modo claro/oscuro, en un lienzo estable de 1032 × 848 unidades lóg
 El host adapta esas unidades a su escala DPI; el editor no cambia de tamaño al
 actualizar medidores ni al alternar la vista.
 
-Pulsa Conectar para habilitar la grabación. Los selectores de entrada representan
-el canal del DAW; el dispositivo/cable se configura en el Mixer. La captura
+Pulsa Conectar para habilitar la grabación. En modo DAW el dispositivo/cable se
+configura en el Mixer; en modo Audio sistema el selector enumera salidas Windows. La captura
 nativa permite hasta 30 minutos por toma. Descargar WAV y Guardar como exportan
 el archivo con el selector nativo. No abren un navegador.
 
@@ -352,3 +352,10 @@ después de grabación y Monitor, y no se incorpora a la toma. Se detiene al
 iniciar otra grabación, cambiar el motor, hacer bypass o cerrar el editor.
 Space Grotesk se incrusta como instancia estática de peso 500 para conservar
 el aspecto de la web también con el renderizador GDI de Windows.
+
+## Audio del sistema en Windows (1.1)
+
+Selecciona **Audio sistema (Windows)** y una salida real de Windows, pulsa
+Conectar y reproduce audio en ese dispositivo. Captura mediante WASAPI loopback,
+sin navegador, cable virtual ni depender de un modelo de tarjeta. La entrada del
+DAW sigue disponible como fuente independiente. [Uso, pruebas y alcance](SYSTEM-AUDIO.md).

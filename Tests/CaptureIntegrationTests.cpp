@@ -28,9 +28,11 @@ void setParameter(LoopCaptureAudioProcessor& processor, const char* name, float 
 }
 }
 
+void runSystemAudioTests();
 int main(int argc, char** argv)
 {
     juce::ScopedJuceInitialiser_GUI init;
+    runSystemAudioTests();
     juce::File firstFile, secondFile, overflowFile, destructionFile;
     {
         LoopCaptureAudioProcessor processor;

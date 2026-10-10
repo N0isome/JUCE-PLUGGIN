@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(LoopCapture VERSION 1.0.0 LANGUAGES C CXX)
+project(LoopCapture VERSION 1.1.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -82,6 +82,7 @@ juce_add_binary_data(LoopCaptureBranding
             Assets/Fonts/SpaceGrotesk.ttf
             Assets/Fonts/IBMPlexMono-Regular.ttf)
 target_sources(LoopCapture PRIVATE
+    Source/SystemAudio.h Source/SystemAudio.cpp
     Source/CaptureCore.h
     Source/PluginProcessor.h Source/PluginProcessor.cpp
     Source/PluginEditor.h Source/PluginEditor.cpp)
@@ -91,6 +92,9 @@ target_link_libraries(LoopCapture PRIVATE
     LoopCaptureBranding
     juce::juce_audio_utils juce::juce_dsp
     PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)
+if(WIN32)
+    target_link_libraries(LoopCapture PRIVATE ole32 uuid)
+endif()
 if(MINGW)
     # Avoid requiring GCC/MinGW runtime DLLs on the user's Windows machine.
     target_link_options(LoopCapture_VST3 PRIVATE -static -static-libgcc -static-libstdc++)
@@ -103,13 +107,19 @@ if(LOOPCAPTURE_BUILD_TESTS)
     juce_add_console_app(CaptureIntegrationTests PRODUCT_NAME "Capture integration tests")
     juce_generate_juce_header(CaptureIntegrationTests)
     target_sources(CaptureIntegrationTests PRIVATE Tests/CaptureIntegrationTests.cpp
+        Tests/SystemAudioTests.cpp
+        Source/SystemAudio.cpp
         Source/PluginProcessor.cpp Source/PluginEditor.cpp)
     target_include_directories(CaptureIntegrationTests PRIVATE Source)
     target_compile_definitions(CaptureIntegrationTests PRIVATE
+        LOOPCAPTURE_TESTING=1
         JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE_VST2=0)
     target_link_libraries(CaptureIntegrationTests PRIVATE
         LoopCaptureBranding
         juce::juce_audio_utils juce::juce_dsp
         juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)
     add_test(NAME CaptureIntegrationTests COMMAND CaptureIntegrationTests)
+    if(WIN32)
+        target_link_libraries(CaptureIntegrationTests PRIVATE ole32 uuid)
+    endif()
 endif()

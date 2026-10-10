@@ -32,6 +32,7 @@ LoopCaptureAudioProcessor::LoopCaptureAudioProcessor()
 
 LoopCaptureAudioProcessor::~LoopCaptureAudioProcessor()
 {
+    systemCapture.stop();
     // The host must have stopped callbacks before destroying the processor.
     // Join without forced thread termination: the disk worker owns the writer
     // and must close it before thumbnail/queue/metadata members disappear.
@@ -62,6 +63,7 @@ void LoopCaptureAudioProcessor::prepareToPlay(double rate, int)
 
 void LoopCaptureAudioProcessor::releaseResources()
 {
+    systemCapture.requestStop();
     stopPreview();
     stopRecording();
     deviceRate.store(0.0);
@@ -83,8 +85,18 @@ void LoopCaptureAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     for (int channel = 2; channel < buffer.getNumChannels(); ++channel)
         buffer.clear(channel, 0, n);
 
+    const bool system = systemInput.load();
+    if (system)
+    {
+        if (isNonRealtime()) { systemCapture.requestStop(); stopRecording(); buffer.clear(); return; }
+        systemCapture.render(buffer, deviceRate.load());
+        if (!systemCapture.ready()) stopRecording();
+    }
+
     inputGain.setTargetValue(juce::Decibels::decibelsToGain(gainDbParameter->load()));
-    monitorGain.setTargetValue(monitorParameter->load() >= 0.5f ? 1.0f : 0.0f);
+    // Loopback captures the output endpoint, including host playback. Never feed
+    // this input back to that endpoint, even if automation sets Monitor to true.
+    monitorGain.setTargetValue(!system && monitorParameter->load() >= 0.5f ? 1.0f : 0.0f);
     auto* left = buffer.getWritePointer(0);
     auto* right = buffer.getWritePointer(1);
     float pLeft = 0.0f, pRight = 0.0f;
@@ -131,8 +143,8 @@ void LoopCaptureAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     for (int sample = 0; sample < n; ++sample)
     {
         const auto gain = monitorGain.getNextValue();
-        left[sample] *= gain;
-        right[sample] *= gain;
+        left[sample] *= system ? 0.0f : gain;
+        right[sample] *= system ? 0.0f : gain;
     }
     // Preview is added AFTER capture and monitoring, so it cannot re-record itself.
     capture::SessionGate::ProducerScope consumer(previewGate);
@@ -152,6 +164,7 @@ void LoopCaptureAudioProcessor::processBlockBypassed(juce::AudioBuffer<float>&,
                                                     juce::MidiBuffer& midi)
 {
     midi.clear();
+    systemCapture.requestStop();
     stopPreview();
     stopRecording();
     // Zero latency effect: leave the host buffer untouched on bypass.
@@ -166,6 +179,11 @@ bool LoopCaptureAudioProcessor::startRecording()
         return false;
 
     const auto rate = deviceRate.load();
+    if (systemInput.load() && !systemCapture.ready())
+    {
+        statusMessage = "Conecta una salida de Windows disponible antes de grabar.";
+        gate.state.store(State::error); return false;
+    }
     if (!isThreadRunning())
     {
         statusMessage = "Disk worker unavailable. Reload the plugin.";
@@ -189,6 +207,7 @@ bool LoopCaptureAudioProcessor::startRecording()
     rateChanged.store(false);
     limitReached.store(false);
     offlineCapture.store(false);
+    sourceFailed.store(false);
     stopRequested.store(false);
     gate.state.store(State::starting); // Publish request AFTER all its data.
     return true;
@@ -317,6 +336,8 @@ void LoopCaptureAudioProcessor::finishTake()
         statusMessage = "Input sample rate changed. The previous take was closed.";
     else if (offlineCapture.load())
         statusMessage = "Offline rendering detected. Live capture was stopped.";
+    else if (sourceFailed.load())
+        statusMessage = "Windows capture interrupted. Saved audio is the completed prefix; reconnect for another take.";
     else if (limitReached.load())
         statusMessage = "Take limit reached. Saved audio is ready to export.";
     else if (!usableFile)
@@ -324,7 +345,7 @@ void LoopCaptureAudioProcessor::finishTake()
     else
         statusMessage = "Ready. Drag the WAV into your DAW.";
 
-    const auto failed = diskFailed || overflow.load() || rateChanged.load() || offlineCapture.load();
+    const auto failed = diskFailed || overflow.load() || rateChanged.load() || offlineCapture.load() || sourceFailed.load();
     gate.state.store(usableFile && !failed ? State::ready : State::error);
 }
 
@@ -335,6 +356,11 @@ void LoopCaptureAudioProcessor::run()
         if (threadShouldExit())
             stopRecording();
         servicePreview();
+        if (systemInput.load() && !systemCapture.ready())
+        {
+            if (systemCapture.hasFailed()) sourceFailed.store(true);
+            stopRecording();
+        }
         auto state = gate.state.load();
         if (state == State::starting)
             beginTake();
@@ -361,6 +387,25 @@ void LoopCaptureAudioProcessor::run()
         if (!didWork)
             wait(5); // Worker polling avoids OS wakeups/locks on the audio thread.
     }
+}
+
+bool LoopCaptureAudioProcessor::connectInput(bool system, const juce::String& id)
+{
+    stopRecording(); stopPreview();
+    systemCapture.stop();
+    systemInput.store(system);
+    { const std::lock_guard lock(infoMutex); selectedSystemDevice = id; }
+    return !system || systemCapture.start(id);
+}
+juce::String LoopCaptureAudioProcessor::getSystemDeviceId() const
+{
+    const std::lock_guard lock(infoMutex); return selectedSystemDevice;
+}
+void LoopCaptureAudioProcessor::disconnectInput()
+{
+    stopRecording(); stopPreview(); systemCapture.stop();
+    // Keep the source selected; disconnected loopback must never fall back to
+    // recording the DAW input and misrepresent it as system capture.
 }
 
 LoopCaptureAudioProcessor::Snapshot LoopCaptureAudioProcessor::getSnapshot() const

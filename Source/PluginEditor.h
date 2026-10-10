@@ -84,6 +84,8 @@ private:
     void applyTheme();
     void saveSample();
     void playSample(const juce::File&);
+    void refreshInputDevices();
+    std::vector<systemaudio::Capture::Device> inputDevices;
     LoopCaptureAudioProcessor& processor;
     CaptureLookAndFeel lookAndFeel;
     juce::Slider inputGain, gainRange;

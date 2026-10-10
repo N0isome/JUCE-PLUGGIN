@@ -1,6 +1,7 @@
 #pragma once
 #include <JuceHeader.h>
 #include "CaptureCore.h"
+#include "SystemAudio.h"
 #include <array>
 #include <mutex>
 
@@ -40,6 +41,14 @@ public:
     void stopPreview() noexcept;
     bool isPreviewPlaying() const noexcept;
     double previewPosition() const noexcept;
+    bool connectInput(bool system, const juce::String& deviceId = {});
+    void disconnectInput(); // UI/control thread only
+    bool usesSystemInput() const noexcept { return systemInput.load(); }
+    systemaudio::Capture::Status systemInputStatus() const { return systemCapture.status(); }
+    juce::String getSystemDeviceId() const;
+#if LOOPCAPTURE_TESTING
+    systemaudio::Capture& testConnectSystem(double rate) { stopRecording(); systemInput.store(true); systemCapture.testBegin(rate); return systemCapture; }
+#endif
     void drawWaveform(juce::Graphics&, juce::Rectangle<int>, double duration);
 
     juce::AudioProcessorValueTreeState parameters;
@@ -49,7 +58,7 @@ public:
     bool acceptsMidi() const override { return false; }
     bool producesMidi() const override { return false; }
     bool isMidiEffect() const override { return false; }
-    double getTailLengthSeconds() const override { return 0.0; }
+    double getTailLengthSeconds() const override { return systemInput.load() ? 1800.0 : 0.0; }
     int getNumPrograms() override { return 1; }
     int getCurrentProgram() override { return 0; }
     void setCurrentProgram(int) override {}
@@ -67,6 +76,8 @@ private:
     void failToStart(const juce::String&);
 
     void servicePreview(); // worker only
+    systemaudio::Capture systemCapture;
+    std::atomic<bool> systemInput { false };
     capture::StereoRing scopeQueue { 8192 }; // audio producer, one editor consumer
     capture::StereoRing previewQueue { 32768 }; // worker producer, audio consumer
     capture::SessionGate previewGate; // excludes audio consumer before queue reset
@@ -96,11 +107,13 @@ private:
     std::atomic<std::uint64_t> capturedFrames { 0 }, writtenFrames { 0 }, maxTakeFrames { 0 };
     std::atomic<bool> stopRequested { false }, overflow { false }, rateChanged { false };
     std::atomic<bool> limitReached { false }, offlineCapture { false };
+    std::atomic<bool> sourceFailed { false };
 
     // These locks are NEVER acquired from processBlock/releaseResources.
     mutable std::mutex infoMutex;
     juce::File takeFile;
     juce::String statusMessage;
+    juce::String selectedSystemDevice;
     bool usableFile = false;
     double requestedRate = 0.0;
     int requestedBits = 24;
