@@ -70,3 +70,47 @@ ZIP. Reabre el DAW, activa Verify plugins y Rescan previously verified plugins
 en Plugin Manager y vuelve a escanear. La cabecera ahora muestra un selector
 Rack/Mesa, y la entrada, ganancia y consola están en tres columnas como la web.
 Esta revisión incluye Escuchar y CANAL 02; no conserva la interfaz anterior.
+
+## Capturar Chrome / YouTube en Windows
+
+El ZIP del plugin no instala VB-CABLE. Elegir Entrada / cable virtual dentro
+del efecto no crea ni selecciona un dispositivo de Windows. El plugin graba
+el audio que recibe su canal del DAW. Compartir una tarjeta entre aplicaciones
+(multi-client) permite escucharlas a la vez, pero no enruta Chrome al Mixer.
+
+Para una prueba con VB-CABLE y FL Studio ASIO:
+
+1. Instala VB-CABLE desde https://vb-audio.com/Cable/ si todavía no está instalado.
+   Reinicia Windows después de instalar el controlador.
+2. En el mezclador de volumen de Windows, asigna la salida de Chrome a
+   **CABLE Input (VB-Audio Virtual Cable)**. Reproduce un video para que Chrome
+   aparezca en la lista de aplicaciones.
+3. En FL Studio → Options → Audio settings, selecciona **FL Studio ASIO**.
+   En Show ASIO panel, elige **CABLE Output** como Input y tu interfaz/altavoces
+   como Output. Esta es una prueba de ruteo; FL Studio ASIO puede tener más
+   latencia que el ASIO nativo de la interfaz.
+4. En un Insert del Mixer, selecciona la entrada estéreo que ofrece ese driver
+   (habitualmente Input 1 - Input 2). Inserta JUCE PLUGGIN en ese mismo Insert.
+5. Pulsa Conectar y comprueba que L/R se mueve. Activa Monitorear si quieres
+   escuchar Chrome a través de la salida de FL. Pulsa Record y luego Stop.
+
+No selecciones CABLE Input como salida Master de FL en esta prueba: la salida
+de FL debe ir a los altavoces/interfaz, para evitar una realimentación.
+
+Si usas el ASIO nativo de una MPC/interfaz y no ofrece CABLE Output como entrada,
+no basta con elegir el cable en el plugin. Usa una entrada loopback real si el
+modelo la ofrece, o prueba el ruteo anterior. Poder escuchar Chrome mientras
+FL está abierto no demuestra que exista una entrada loopback.
+
+Para aislar un posible fallo del grabador, envía primero audio interno de FL a
+ese mismo Insert. Si el plugin muestra L/R y graba ese audio, revisa el ruteo
+Chrome → cable → driver → entrada del Mixer. Si recibe audio en ese Insert pero
+no muestra L/R, entonces hay que revisar el efecto y su posición en la cadena.
+
+Cambiar el driver principal de FL se hace en Audio settings. Esta revisión
+no implementa selección independiente de tarjetas ni captura WASAPI loopback
+desde el plugin.
+
+Referencias:
+- https://vb-audio.com/Cable/
+- https://www.image-line.com/fl-studio-learning/fl-studio-online-manual/html/envsettings_audio.htm
