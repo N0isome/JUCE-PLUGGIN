@@ -45,7 +45,7 @@ El binario Windows de prueba y su instalación están descritos en
 | `Source/CaptureCore.h` | Cola SPSC preasignada y protocolo de exclusión al terminar una toma |
 | `Tests/CaptureCoreTests.cpp` | Orden estéreo, wrap, overflow y Stop concurrente |
 | `Tests/CaptureIntegrationTests.cpp` | WAV real, ganancia, monitor, estado y ciclo de vida JUCE |
-| `.github/workflows/build.yml` | Matriz Windows/macOS con JUCE 7.0.12 |
+| `.github/workflows/build.yml` | Windows JUCE 7.0.12 / macOS JUCE 8.0.6 |
 | `VALIDATION.md` | Resultados y alcance de las comprobaciones ejecutadas |
 
 ## Flujo de audio
@@ -140,7 +140,7 @@ cmake --build build-ninja --parallel 2
 ### macOS / Xcode
 
 ```bash
-cmake -S . -B build-mac -G Xcode -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
+cmake -S . -B build-mac -G Xcode -DLOOPCAPTURE_JUCE_PATH="" -DLOOPCAPTURE_JUCE_TAG=8.0.6 -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
 cmake --build build-mac --config Release --parallel 2
 ctest --test-dir build-mac -C Release --output-on-failure
 open build-mac/LoopCapture.xcodeproj
@@ -150,6 +150,7 @@ Para un binario universal, configura desde una carpeta nueva:
 
 ```bash
 cmake -S . -B build-universal -G Xcode \
+  -DLOOPCAPTURE_JUCE_PATH="" -DLOOPCAPTURE_JUCE_TAG=8.0.6 \
   -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
   -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
 cmake --build build-universal --config Release --parallel 2
@@ -174,7 +175,7 @@ cmake -S . -B build-juce7 -DLOOPCAPTURE_JUCE_TAG=7.0.12
 ```
 
 Usa carpetas de build distintas al cambiar versión/toolchain. La compatibilidad
-de código abarca JUCE 7.0.12 y 8.0.6; la matriz CI incluida usa JUCE 7.0.12.
+de código abarca JUCE 7.0.12 y 8.0.6; la matriz CI incluida usa JUCE 7.0.12 en Windows y JUCE 8.0.6 en macOS.
 
 | Opción | Valor por defecto | Uso |
 | --- | --- | --- |
@@ -209,8 +210,8 @@ En Ninja/Makefiles puede omitirse la carpeta `Release` en la ruta de artefactos.
 | macOS VST3 | `~/Library/Audio/Plug-Ins/VST3/` |
 | macOS AU | `~/Library/Audio/Plug-Ins/Components/` |
 
-Windows puede requerir permisos al copiar a Program Files; también puedes
-agregar una carpeta de plugins propia en el host. En FL Studio abre
+Windows puede requerir permisos al copiar a Program Files. Usa la carpeta VST3
+estándar indicada arriba. En FL Studio abre
 **Options → Manage plugins**, verifica la ruta y ejecuta **Find installed plugins**.
 En macOS reinicia el host después de instalar. La distribución a otros equipos
 requiere tratar firma/notarización por separado; este proyecto genera los bundles
@@ -257,12 +258,11 @@ no necesitas activar esa función para el grabador interno de JUCE PLUGGIN.
 - Cada archivo usa un UUID y queda en `tempDirectory/LoopCapture`. El plugin
   no lo elimina al cerrar; evita que un host que importa por referencia lo pierda.
 - **Copia/importa la muestra a la carpeta de tu proyecto del DAW.** La carpeta
-  temporal puede limpiarse por el sistema. `Ver carpeta` abre su ubicación para
-  copiarla manualmente. La limpieza de tomas viejas es manual en esta versión.
+  temporal puede limpiarse por el sistema. `Guardar como` permite copiarla a una ubicación permanente. La limpieza de tomas viejas es manual en esta versión.
 - El estado del proyecto serializa ganancia/monitor mediante APVTS. No serializa
   el audio ni reabre automáticamente una toma temporal al cargar el proyecto.
 - El host y su wrapper deciden qué destinos aceptan un WAV y cómo lo importan.
-  Si el arrastre no funciona, usa `Ver carpeta` e importa el archivo desde el host.
+  Si el arrastre no funciona, usa `Guardar como` e importa el archivo desde el host.
   Ejecuta host y explorador con el mismo nivel de permisos en Windows.
 - El límite de render y frecuencia es por instancia; pueden coexistir varias
   instancias con sus propias colas, worker y archivos.
@@ -295,7 +295,7 @@ ctest --test-dir build-core --output-on-failure
 ```
 
 Las pruebas de integración se construyen en una configuración normal con JUCE.
-GitHub Actions compila y prueba Windows y macOS con JUCE 7.0.12.
+GitHub Actions compila y prueba Windows con JUCE 7.0.12 y macOS con JUCE 8.0.6.
 El resultado de cada ejecución se consulta en Actions; incluir el workflow
 no significa que todas las compilaciones ya hayan pasado.
 
@@ -328,8 +328,8 @@ para distribuir esa variante se deben respetar sus términos, incluida su vía A
   en un hilo de fondo. El callback de audio no realiza ese trabajo.
 - Las tipografías Space Grotesk e IBM Plex Mono se incrustan en el binario,
   sin requerir instalación en el sistema. Sus licencias OFL están en `Assets/Fonts`.
-- La reproducción y el canal de prueba de la demo web pertenecen a la demo;
-  el plugin nativo conserva el monitoreo de entrada del procesador.
+- La preescucha de tomas y CANAL 02 también están disponibles en el editor nativo.
+  CANAL 02 acepta un WAV arrastrado para comprobar el flujo de muestras.
 
 ## Interfaz nativa actualizada
 

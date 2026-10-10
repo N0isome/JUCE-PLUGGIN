@@ -1,4 +1,5 @@
 #include "PluginProcessor.h"
+#include "PluginEditor.h"
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
@@ -27,7 +28,7 @@ void setParameter(LoopCaptureAudioProcessor& processor, const char* name, float 
 }
 }
 
-int main()
+int main(int argc, char** argv)
 {
     juce::ScopedJuceInitialiser_GUI init;
     juce::File firstFile, secondFile, overflowFile, destructionFile;
@@ -74,6 +75,61 @@ int main()
         require(std::abs(saved.getSample(0, 10) - 0.125f * gain) < 2.0e-6f, "recording before mute, left");
         require(std::abs(saved.getSample(1, 10) + 0.25f * gain) < 2.0e-6f, "stereo right audio");
         reader.reset();
+
+        // Preview must reach the DAW output with monitor muted; no disk I/O is
+        // performed by processBlock, and sample-rate conversion runs on worker.
+        require(processor.startPreview(firstFile), "start preview");
+        juce::Thread::sleep(30);
+        float previewMagnitude = 0;
+        for (int i = 0; i < 200 && processor.isPreviewPlaying(); ++i)
+        {
+            buffer.clear(); processor.processBlock(buffer, midi);
+            previewMagnitude = juce::jmax(previewMagnitude, buffer.getMagnitude(0, block));
+            juce::Thread::sleep(2);
+        }
+        require(previewMagnitude > 0.1f, "preview audible despite monitor mute");
+        require(!processor.isPreviewPlaying(), "preview finishes without looping");
+        require(std::abs(processor.previewPosition() - static_cast<double>(block * blocks) / 48000) < 0.001,
+                "preview preserves complete duration");
+        processor.stopPreview(); juce::Thread::sleep(10);
+        processor.prepareToPlay(44100, block);
+        require(processor.startPreview(firstFile), "preview after sample-rate change");
+        juce::Thread::sleep(30);
+        for (int i = 0; i < 200 && processor.isPreviewPlaying(); ++i)
+        { buffer.clear(); processor.processBlock(buffer, midi); juce::Thread::sleep(2); }
+        require(!processor.isPreviewPlaying(), "resampled preview stops");
+        require(std::abs(processor.previewPosition() - static_cast<double>(block * blocks) / 48000) < 0.001,
+                "resampling preserves playback duration");
+        juce::Thread::sleep(10);
+        processor.prepareToPlay(48000, block);
+
+
+        if (argc == 3 && juce::String(argv[1]) == "--render-ui")
+        {
+            const juce::File folder { juce::String(argv[2]) }; folder.createDirectory();
+            auto render = [&](const juce::String& name, juce::AudioProcessorEditor& editor)
+            {
+                const auto target = folder.getChildFile(name + ".png"); target.deleteFile();
+                auto png = target.createOutputStream();
+                require(png != nullptr, "preview output stream");
+                juce::PNGImageFormat pngFormat;
+                require(pngFormat.writeImageToStream(editor.createComponentSnapshot(editor.getLocalBounds()), *png), "render native UI");
+            };
+            LoopCaptureAudioProcessor blankProcessor; blankProcessor.prepareToPlay(48000, block);
+            std::unique_ptr<juce::AudioProcessorEditor> blank(blankProcessor.createEditor());
+            render("juce-pluggin-rack-dark", *blank);
+            for (int i = 0; i < blank->getNumChildComponents(); ++i)
+                if (auto* button = dynamic_cast<juce::TextButton*>(blank->getChildComponent(i)))
+                    if (button->getButtonText() == "Modo claro") button->onClick();
+            render("juce-pluggin-rack-light", *blank);
+            for (int i = 0; i < blank->getNumChildComponents(); ++i)
+                if (auto* combo = dynamic_cast<juce::ComboBox*>(blank->getChildComponent(i)))
+                    if (combo->getName() == "Interfaz de prueba") combo->setSelectedId(2, juce::sendNotificationSync);
+            render("juce-pluggin-mesa-light", *blank);
+            std::unique_ptr<juce::AudioProcessorEditor> ready(processor.createEditor());
+            render("juce-pluggin-recorded", *ready);
+        }
+
 
         // State round trip includes automatable gain and monitor, not temp WAVs.
         juce::MemoryBlock state;
@@ -137,5 +193,5 @@ int main()
     secondFile.deleteFile();
     overflowFile.deleteFile();
     destructionFile.deleteFile();
-    std::cout << "PASS: WAV, pre-mute gain, stereo, callback-free Stop, APVTS, release/cancel, overflow, destruction\n";
+    std::cout << "PASS: WAV, pre-mute gain, stereo, preview/resampling, callback-free Stop, APVTS, release/cancel, overflow, destruction\n";
 }

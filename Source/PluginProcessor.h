@@ -35,6 +35,11 @@ public:
     void stopRecording() noexcept;
     Snapshot getSnapshot() const;
     std::array<float, 2> consumePeaks() noexcept;
+    int consumeScope(juce::AudioBuffer<float>&) noexcept;
+    bool startPreview(const juce::File&); // control thread; reader stays on worker
+    void stopPreview() noexcept;
+    bool isPreviewPlaying() const noexcept;
+    double previewPosition() const noexcept;
     void drawWaveform(juce::Graphics&, juce::Rectangle<int>, double duration);
 
     juce::AudioProcessorValueTreeState parameters;
@@ -60,6 +65,20 @@ private:
     bool drainChunk();
     void finishTake();
     void failToStart(const juce::String&);
+
+    void servicePreview(); // worker only
+    capture::StereoRing scopeQueue { 8192 }; // audio producer, one editor consumer
+    capture::StereoRing previewQueue { 32768 }; // worker producer, audio consumer
+    capture::SessionGate previewGate; // excludes audio consumer before queue reset
+    juce::AudioBuffer<float> previewDisk { 2, 8192 }, previewAudio { 2, 8192 };
+    std::unique_ptr<juce::AudioFormatReaderSource> previewReader;
+    std::unique_ptr<juce::ResamplingAudioSource> previewResampler;
+    juce::File requestedPreviewFile; // infoMutex
+    std::atomic<bool> previewEof { false };
+    std::atomic<std::uint64_t> previewFrames { 0 };
+    int previewPending = 0; // worker-owned chunk awaiting queue capacity
+    std::uint64_t previewRemainingFrames = 0; // worker only
+    double previewRate = 0.0; // worker only
 
     static constexpr std::size_t queueFrames = 524288; // 4 MiB stereo float
     static constexpr int diskChunkFrames = 8192;

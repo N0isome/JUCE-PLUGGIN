@@ -8,10 +8,10 @@ LoopCaptureAudioProcessor::makeParameters()
     juce::AudioProcessorValueTreeState::ParameterLayout layout;
     layout.add(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID { "inputGain", 1 }, "Input gain",
-        juce::NormalisableRange<float> { -60.0f, 18.0f, 0.1f }, 0.0f,
+        juce::NormalisableRange<float> { -24.0f, 12.0f, 0.1f }, 0.0f,
         juce::AudioParameterFloatAttributes().withLabel("dB")));
     layout.add(std::make_unique<juce::AudioParameterBool>(
-        juce::ParameterID { "monitor", 1 }, "Monitor", true));
+        juce::ParameterID { "monitor", 1 }, "Monitor", false));
     return layout;
 }
 
@@ -49,6 +49,7 @@ bool LoopCaptureAudioProcessor::isBusesLayoutSupported(const BusesLayout& layout
 
 void LoopCaptureAudioProcessor::prepareToPlay(double rate, int)
 {
+    stopPreview();
     stopRecording(); // A host reconfiguration ends the previous take.
     deviceRate.store(rate);
     inputGain.reset(rate, 0.015);
@@ -61,6 +62,7 @@ void LoopCaptureAudioProcessor::prepareToPlay(double rate, int)
 
 void LoopCaptureAudioProcessor::releaseResources()
 {
+    stopPreview();
     stopRecording();
     deviceRate.store(0.0);
 }
@@ -95,6 +97,8 @@ void LoopCaptureAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         pLeft = juce::jmax(pLeft, std::abs(left[sample]));
         pRight = juce::jmax(pRight, std::abs(right[sample]));
     }
+    scopeQueue.push(buffer.getArrayOfReadPointers(), static_cast<std::size_t>(n));
+    // Visualisation may drop blocks; this never affects the recording queue.
     // Telemetry only. Bounded load/store; a simultaneous UI exchange may
     // coalesce one peak. The recording queue has strict lossless ordering.
     peaks[0].store(juce::jmax(peaks[0].load(), pLeft));
@@ -130,18 +134,32 @@ void LoopCaptureAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         left[sample] *= gain;
         right[sample] *= gain;
     }
+    // Preview is added AFTER capture and monitoring, so it cannot re-record itself.
+    capture::SessionGate::ProducerScope consumer(previewGate);
+    if (consumer.canCapture())
+    {
+        for (int offset = 0; offset < n; offset += previewAudio.getNumSamples())
+        {
+            const int chunk = juce::jmin(previewAudio.getNumSamples(), n - offset);
+            const int got = static_cast<int>(previewQueue.pop(previewAudio.getArrayOfWritePointers(), static_cast<std::size_t>(chunk)));
+            for (int c = 0; c < 2; ++c) buffer.addFrom(c, offset, previewAudio, c, 0, got);
+            previewFrames.fetch_add(static_cast<std::uint64_t>(got));
+        }
+    }
 }
 
 void LoopCaptureAudioProcessor::processBlockBypassed(juce::AudioBuffer<float>&,
                                                     juce::MidiBuffer& midi)
 {
     midi.clear();
+    stopPreview();
     stopRecording();
     // Zero latency effect: leave the host buffer untouched on bypass.
 }
 
 bool LoopCaptureAudioProcessor::startRecording()
 {
+    stopPreview();
     const std::lock_guard lock(infoMutex);
     const auto state = gate.state.load();
     if (state == State::starting || state == State::recording || state == State::stopping)
@@ -316,6 +334,7 @@ void LoopCaptureAudioProcessor::run()
     {
         if (threadShouldExit())
             stopRecording();
+        servicePreview();
         auto state = gate.state.load();
         if (state == State::starting)
             beginTake();
@@ -354,6 +373,92 @@ LoopCaptureAudioProcessor::Snapshot LoopCaptureAudioProcessor::getSnapshot() con
 std::array<float, 2> LoopCaptureAudioProcessor::consumePeaks() noexcept
 {
     return { peaks[0].exchange(0.0f), peaks[1].exchange(0.0f) };
+}
+
+
+int LoopCaptureAudioProcessor::consumeScope(juce::AudioBuffer<float>& destination) noexcept
+{
+    return static_cast<int>(scopeQueue.pop(destination.getArrayOfWritePointers(),
+                                          static_cast<std::size_t>(destination.getNumSamples())));
+}
+
+bool LoopCaptureAudioProcessor::startPreview(const juce::File& file)
+{
+    const std::lock_guard lock(infoMutex);
+    const auto state = gate.state.load();
+    if (state == State::starting || state == State::recording || state == State::stopping
+        || deviceRate.load() <= 0 || !file.existsAsFile() || isNonRealtime()) return false;
+    // Do not replace an active request. Stop first and let the worker retire it.
+    if (previewGate.state.load() != State::idle) return false;
+    requestedPreviewFile = file;
+    previewGate.state.store(State::starting);
+    return true;
+}
+void LoopCaptureAudioProcessor::stopPreview() noexcept
+{
+    auto state = previewGate.state.load();
+    if (state != State::idle) previewGate.state.store(State::stopping);
+}
+bool LoopCaptureAudioProcessor::isPreviewPlaying() const noexcept
+{
+    const auto state = previewGate.state.load();
+    return state == State::starting || state == State::recording;
+}
+double LoopCaptureAudioProcessor::previewPosition() const noexcept
+{
+    const auto rate = deviceRate.load();
+    return rate > 0 ? static_cast<double>(previewFrames.load()) / rate : 0;
+}
+void LoopCaptureAudioProcessor::servicePreview()
+{
+    auto state = previewGate.state.load();
+    if (threadShouldExit() || (std::abs(previewRate - deviceRate.load()) > 0.01 && state == State::recording))
+    { stopPreview(); state = previewGate.state.load(); }
+    if (state == State::stopping)
+    {
+        if (!previewGate.producerIsQuiescent()) return;
+        previewResampler.reset(); previewReader.reset();
+        previewQueue.resetWhileInactive(); previewPending = 0; previewEof.store(false);
+        previewGate.state.store(State::idle); return;
+    }
+    if (state == State::starting)
+    {
+        if (!previewGate.producerIsQuiescent()) return;
+        juce::File file; { const std::lock_guard lock(infoMutex); file = requestedPreviewFile; }
+        std::unique_ptr<juce::AudioFormatReader> reader(formatManager.createReaderFor(file));
+        previewRate = deviceRate.load();
+        if (!reader || reader->numChannels > 2 || previewRate <= 0)
+        { previewGate.state.store(State::stopping); return; }
+        const auto sourceRate = reader->sampleRate;
+        previewRemainingFrames = static_cast<std::uint64_t>(std::ceil(static_cast<double>(reader->lengthInSamples) * previewRate / sourceRate));
+        previewReader = std::make_unique<juce::AudioFormatReaderSource>(reader.release(), true);
+        previewResampler = std::make_unique<juce::ResamplingAudioSource>(previewReader.get(), false, 2);
+        previewResampler->setResamplingRatio(sourceRate / previewRate);
+        previewResampler->prepareToPlay(8192, previewRate);
+        previewQueue.resetWhileInactive(); previewFrames.store(0); previewPending = 0; previewEof.store(false);
+        // Stop may have arrived while the file was opening; never overwrite it.
+        auto expected = State::starting;
+        previewGate.state.compare_exchange_strong(expected, State::recording);
+        state = previewGate.state.load();
+    }
+    if (state != State::recording || !previewResampler) return;
+    if (previewPending > 0)
+    {
+        if (!previewQueue.push(previewDisk.getArrayOfReadPointers(), static_cast<std::size_t>(previewPending))) return;
+        previewPending = 0;
+    }
+    if (previewEof.load())
+    {
+        if (previewQueue.empty()) previewGate.state.store(State::stopping);
+        return;
+    }
+    const auto left = previewRemainingFrames;
+    if (left == 0) { previewEof.store(true); return; }
+    previewPending = static_cast<int>(juce::jmin(std::uint64_t { 8192 }, left));
+    previewRemainingFrames -= static_cast<std::uint64_t>(previewPending);
+    previewDisk.clear();
+    previewResampler->getNextAudioBlock({ &previewDisk, 0, previewPending });
+    if (previewQueue.push(previewDisk.getArrayOfReadPointers(), static_cast<std::size_t>(previewPending))) previewPending = 0;
 }
 
 void LoopCaptureAudioProcessor::drawWaveform(juce::Graphics& graphics,

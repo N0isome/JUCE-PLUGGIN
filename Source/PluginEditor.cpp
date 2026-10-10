@@ -4,441 +4,454 @@
 
 namespace
 {
-std::array<juce::Colour, 7> palette(bool light)
+struct Colours
 {
-    if (light)
-        return { juce::Colour(0xffeae5ee), juce::Colour(0xfff4eff7), juce::Colour(0xffc5b8d1),
-                 juce::Colour(0xff2d2538), juce::Colour(0xff675b76), juce::Colour(0xff8260b4), juce::Colour(0xff8c531d) };
-    return { juce::Colour(0xff201e25), juce::Colour(0xff292630), juce::Colour(0xff494151),
-             juce::Colour(0xfff4eff9), juce::Colour(0xffb9afc6), juce::Colour(0xffbda4f5), juce::Colour(0xffefb87c) };
+    juce::Colour bg, panel, field, line, text, muted, accent, onAccent, warning, shine;
+};
+Colours palette(bool light)
+{
+    if (light) return { juce::Colour(0xffeae5ee), juce::Colour(0xfff4eff7), juce::Colour(0xffddd5e6),
+        juce::Colour(0xffc5b8d1), juce::Colour(0xff2d2538), juce::Colour(0xff675b76),
+        juce::Colour(0xff8260b4), juce::Colour(0xfffff9ff), juce::Colour(0xff8c531d), juce::Colour(0xfffffaff) };
+    return { juce::Colour(0xff201e25), juce::Colour(0xff292630), juce::Colour(0xff15131a),
+        juce::Colour(0xff494151), juce::Colour(0xfff4eff9), juce::Colour(0xffb9afc6),
+        juce::Colour(0xffbda4f5), juce::Colour(0xff23182f), juce::Colour(0xffefb87c), juce::Colour(0xff3a3542) };
 }
-
-juce::Font uiFont(float height, int style = juce::Font::plain, bool mono = false)
+juce::Font uiFont(float height, bool mono = false)
 {
-    static auto displayFace = juce::Typeface::createSystemTypefaceFor(PluginBranding::SpaceGrotesk_ttf,
-                                                                    PluginBranding::SpaceGrotesk_ttfSize);
-    static auto monoFace = juce::Typeface::createSystemTypefaceFor(PluginBranding::IBMPlexMonoRegular_ttf,
-                                                                 PluginBranding::IBMPlexMonoRegular_ttfSize);
-    const auto face = mono ? monoFace : displayFace;
+    static auto face = juce::Typeface::createSystemTypefaceFor(PluginBranding::SpaceGrotesk_ttf,
+                                                             PluginBranding::SpaceGrotesk_ttfSize);
+    static auto code = juce::Typeface::createSystemTypefaceFor(PluginBranding::IBMPlexMonoRegular_ttf,
+                                                             PluginBranding::IBMPlexMonoRegular_ttfSize);
 #if JUCE_MAJOR_VERSION >= 8
-    return juce::Font(juce::FontOptions(face).withHeight(height)).withStyle(style);
+    return juce::Font(juce::FontOptions(mono ? code : face).withHeight(height));
 #else
-    return juce::Font(face).withHeight(height).withStyle(style);
+    return juce::Font(mono ? code : face).withHeight(height);
 #endif
 }
-
 juce::String formatTime(double seconds)
 {
-    const auto centiseconds = static_cast<int>(seconds * 100.0);
-    return juce::String::formatted("%02d:%02d.%02d", centiseconds / 6000,
-                                   (centiseconds / 100) % 60, centiseconds % 100);
+    const auto ms = static_cast<juce::int64>(seconds * 1000.0);
+    return juce::String::formatted("%02d:%02d.%03d", static_cast<int>(ms / 60000),
+        static_cast<int>((ms / 1000) % 60), static_cast<int>(ms % 1000));
 }
-
-bool isBusy(capture::State state)
+bool isBusy(capture::State s)
 {
-    return state == capture::State::starting || state == capture::State::recording
-        || state == capture::State::stopping;
+    return s == capture::State::starting || s == capture::State::recording || s == capture::State::stopping;
 }
-}
-
-CaptureLookAndFeel::CaptureLookAndFeel() { setLightMode(false); }
-
-void CaptureLookAndFeel::setLightMode(bool light)
+void text(juce::Graphics& g, juce::String value, juce::Rectangle<int> area,
+          float size, juce::Colour colour, bool mono = false,
+          juce::Justification align = juce::Justification::centredLeft)
 {
-    lightMode = light;
-    const auto [background, panel, line, ink, muted, mint, coral] = palette(lightMode);
-    setColour(juce::Slider::thumbColourId, mint);
-    setColour(juce::Slider::trackColourId, mint);
-    setColour(juce::Slider::backgroundColourId, line);
-    setColour(juce::Slider::textBoxTextColourId, ink);
-    setColour(juce::Slider::textBoxBackgroundColourId, background);
-    setColour(juce::Slider::textBoxOutlineColourId, line);
-    setColour(juce::TextButton::buttonColourId, panel);
-    setColour(juce::TextButton::buttonOnColourId, mint.withAlpha(0.18f));
-    setColour(juce::TextButton::textColourOffId, ink);
-    setColour(juce::TextButton::textColourOnId, mint);
-    setColour(juce::Label::textColourId, ink);
+    g.setFont(uiFont(size, mono)); g.setColour(colour); g.drawText(value, area, align);
+}
+void field(juce::Graphics& g, juce::Rectangle<float> area, const Colours& c, bool enabled = true)
+{
+    const auto alpha = enabled ? 1.0f : 0.43f;
+    g.setGradientFill(juce::ColourGradient(c.panel.withAlpha(alpha), area.getTopLeft(),
+                                         c.bg.withAlpha(alpha), area.getBottomLeft(), false));
+    g.fillRoundedRectangle(area, 9.0f);
+    g.setColour(c.line.withAlpha(alpha)); g.drawRoundedRectangle(area.reduced(0.5f), 9.0f, 1.0f);
+    g.setColour(c.shine.withAlpha(alpha * 0.5f));
+    g.drawHorizontalLine(static_cast<int>(area.getY()) + 1, area.getX() + 8, area.getRight() - 8);
+}
 }
 
-void CaptureLookAndFeel::drawButtonBackground(juce::Graphics& g, juce::Button& button,
-                                             const juce::Colour&, bool highlighted, bool down)
+void CaptureLookAndFeel::setLightMode(bool b)
 {
-    const auto [background, panel, line, ink, muted, mint, coral] = palette(lightMode);
-    auto area = button.getLocalBounds().toFloat().reduced(0.5f);
-    auto colour = button.findColour(button.getToggleState()
-                                   ? juce::TextButton::buttonOnColourId
-                                   : juce::TextButton::buttonColourId);
-    if (highlighted) colour = colour.brighter(0.13f);
-    if (down) colour = colour.darker(0.12f);
-    g.setColour(colour.withMultipliedAlpha(button.isEnabled() ? 1.0f : 0.35f));
-    g.fillRoundedRectangle(area, 12.0f);
-    g.setColour(button.getToggleState() ? mint.withAlpha(0.6f) : line);
-    g.drawRoundedRectangle(area, 12.0f, 1.0f);
+    lightMode = b; const auto c = palette(b);
+    setColour(juce::ComboBox::textColourId, c.text);
+    setColour(juce::ComboBox::backgroundColourId, c.panel);
+    setColour(juce::ComboBox::outlineColourId, c.line);
+    setColour(juce::PopupMenu::backgroundColourId, c.panel);
+    setColour(juce::PopupMenu::textColourId, c.text);
+    setColour(juce::PopupMenu::highlightedBackgroundColourId, c.accent);
+    setColour(juce::PopupMenu::highlightedTextColourId, c.onAccent);
+    setColour(juce::Label::textColourId, c.text);
 }
-
-void CaptureLookAndFeel::drawButtonText(juce::Graphics& g, juce::TextButton& button, bool, bool)
+void CaptureLookAndFeel::drawButtonBackground(juce::Graphics& g, juce::Button& b,
+                                             const juce::Colour&, bool over, bool down)
 {
-    g.setFont(uiFont(15.0f, juce::Font::bold));
-    g.setColour(button.findColour(button.getToggleState()
-                                 ? juce::TextButton::textColourOnId
-                                 : juce::TextButton::textColourOffId)
-                    .withMultipliedAlpha(button.isEnabled() ? 1.0f : 0.4f));
-    g.drawText(button.getButtonText(), button.getLocalBounds().reduced(8),
-               juce::Justification::centred);
-}
-
-void StereoPeakMeter::update(std::array<float, 2> incoming, float deltaSeconds)
-{
-    for (std::size_t c = 0; c < 2; ++c)
+    auto c = palette(lightMode); if (over) c.panel = c.panel.brighter(0.09f);
+    if (down) c.panel = c.panel.darker(0.1f);
+    const auto area = b.getLocalBounds().toFloat();
+    if (b.getComponentID() == "record")
     {
-        const auto target = juce::Decibels::gainToDecibels(incoming[c], -72.0f);
-        levelDb[c] = juce::jmax(target, levelDb[c] - 26.0f * deltaSeconds);
-        clipSeconds[c] = incoming[c] >= 1.0f ? 1.0f
-                                           : juce::jmax(0.0f, clipSeconds[c] - deltaSeconds);
+        g.setColour((b.getToggleState() ? c.warning : c.accent).withAlpha(b.isEnabled() ? 1.0f : 0.43f));
+        g.fillRoundedRectangle(area, 9.0f);
+    }
+    else field(g, area, c, b.isEnabled());
+}
+void CaptureLookAndFeel::drawButtonText(juce::Graphics& g, juce::TextButton& b, bool, bool)
+{
+    const auto c = palette(lightMode);
+    text(g, b.getButtonText(), b.getLocalBounds().reduced(8), 16.0f,
+         (b.getComponentID() == "record" ? c.onAccent : c.text).withAlpha(b.isEnabled() ? 1.0f : 0.43f),
+         false, juce::Justification::centred);
+}
+void CaptureLookAndFeel::drawToggleButton(juce::Graphics& g, juce::ToggleButton& b, bool, bool)
+{
+    const auto c = palette(lightMode); auto area = b.getLocalBounds();
+    const juce::Rectangle<float> box(2.0f, static_cast<float>(area.getCentreY() - 9), 18.0f, 18.0f);
+    g.setColour(b.getToggleState() ? c.accent : c.panel); g.fillRoundedRectangle(box, 3);
+    g.setColour(c.muted); g.drawRoundedRectangle(box, 3, 1);
+    if (b.getToggleState())
+    {
+        juce::Path check; check.startNewSubPath(box.getX() + 4, box.getY() + 9);
+        check.lineTo(box.getX() + 8, box.getY() + 13); check.lineTo(box.getX() + 15, box.getY() + 5);
+        g.setColour(c.onAccent); g.strokePath(check, juce::PathStrokeType(2));
+    }
+    text(g, b.getButtonText(), area.withTrimmedLeft(28), 14, c.text);
+}
+void CaptureLookAndFeel::drawComboBox(juce::Graphics& g, int w, int h, bool, int, int, int, int, juce::ComboBox& b)
+{
+    const auto c = palette(lightMode); field(g, { 0, 0, static_cast<float>(w), static_cast<float>(h) }, c, b.isEnabled());
+    juce::Path p; p.startNewSubPath(static_cast<float>(w - 16), static_cast<float>(h / 2 - 2));
+    p.lineTo(static_cast<float>(w - 12), static_cast<float>(h / 2 + 2));
+    p.lineTo(static_cast<float>(w - 8), static_cast<float>(h / 2 - 2));
+    g.setColour(c.text.withAlpha(b.isEnabled() ? 1.0f : 0.43f)); g.strokePath(p, juce::PathStrokeType(1));
+}
+juce::Font CaptureLookAndFeel::getComboBoxFont(juce::ComboBox&) { return uiFont(15.0f); }
+juce::Font CaptureLookAndFeel::getPopupMenuFont() { return uiFont(15.0f); }
+void CaptureLookAndFeel::drawLinearSlider(juce::Graphics& g, int x, int y, int w, int h,
+                                         float pos, float, float, juce::Slider::SliderStyle, juce::Slider&)
+{
+    const auto c = palette(lightMode); const auto cy = static_cast<float>(y + h / 2);
+    g.setColour(c.line); g.fillRect(static_cast<float>(x), cy - 2, static_cast<float>(w), 4.0f);
+    g.setColour(c.accent); g.fillRect(static_cast<float>(x), cy - 2, juce::jmax(0.0f, pos - x), 4.0f);
+    g.setColour(c.muted); g.fillEllipse(pos - 8, cy - 8, 16, 16);
+    g.setColour(c.text); g.drawEllipse(pos - 8, cy - 8, 16, 16, 1.2f);
+}
+void CaptureLookAndFeel::drawRotarySlider(juce::Graphics& g, int x, int y, int w, int h,
+                                         float position, float start, float end, juce::Slider& slider)
+{
+    const auto c = palette(lightMode);
+    const auto radius = juce::jmin(w, h) * 0.5f - 4.0f;
+    const juce::Point<float> centre(static_cast<float>(x) + w * 0.5f, static_cast<float>(y) + h * 0.5f);
+    const auto bounds = juce::Rectangle<float>(radius * 2, radius * 2).withCentre(centre);
+    juce::Path shadow; shadow.addEllipse(bounds.reduced(6));
+    juce::DropShadow(juce::Colours::black.withAlpha(0.3f), 9, { 4, 6 }).drawForPath(g, shadow);
+    g.setGradientFill(juce::ColourGradient(c.panel, bounds.getTopLeft(), c.field, bounds.getBottomRight(), false));
+    g.fillEllipse(bounds.reduced(6)); g.setColour(c.line); g.drawEllipse(bounds.reduced(6), 1);
+    juce::Path track, active; const auto angle = start + position * (end - start);
+    track.addCentredArc(centre.x, centre.y, radius, radius, 0, start, end, true);
+    active.addCentredArc(centre.x, centre.y, radius, radius, 0, start, angle, true);
+    g.setColour(c.line); g.strokePath(track, juce::PathStrokeType(6));
+    g.setColour(c.accent); g.strokePath(active, juce::PathStrokeType(6));
+    g.drawLine(juce::Line<float>(centre.getPointOnCircumference(radius - 16, angle),
+                               centre.getPointOnCircumference(radius - 26, angle)), 4);
+    const auto small = w < 110; const auto valueArea = bounds.toNearestInt();
+    text(g, juce::String(slider.getValue(), 1), valueArea.withY(valueArea.getCentreY() - 18).withHeight(32),
+         small ? 18.0f : 26.0f, c.text, true, juce::Justification::centred);
+    text(g, "dB", valueArea.withY(valueArea.getCentreY() + 12).withHeight(18), 12, c.muted, true, juce::Justification::centred);
+}
+
+void StereoPeakMeter::update(std::array<float, 2> in, float dt)
+{
+    for (std::size_t i = 0; i < 2; ++i)
+    {
+        levelDb[i] = juce::jmax(juce::Decibels::gainToDecibels(in[i], -90.0f), levelDb[i] - 26 * dt);
+        clipSeconds[i] = in[i] >= 1 ? 1.0f : juce::jmax(0.0f, clipSeconds[i] - dt);
     }
     repaint();
 }
-
 void StereoPeakMeter::paint(juce::Graphics& g)
 {
-    const auto [background, panel, line, ink, muted, mint, coral] = palette(lightMode);
-    const auto area = getLocalBounds().toFloat();
-    g.setColour(panel);
-    g.fillRoundedRectangle(area, 16.0f);
-    g.setColour(muted);
-    g.setFont(uiFont(11.0f, juce::Font::bold));
-    g.drawText("INPUT / PEAK", 12, 12, getWidth() - 24, 20, juce::Justification::centred);
-    const auto barTop = 52.0f;
-    const auto barHeight = juce::jmax(16.0f, area.getHeight() - 96.0f);
-    const auto barWidth = juce::jmax(9.0f, (area.getWidth() - 65.0f) * 0.5f);
-    for (std::size_t c = 0; c < 2; ++c)
+    const auto c = palette(lightMode); const auto muted = juce::Colour(0xffaa9bbd);
+    for (int i = 0; i < 2; ++i)
     {
-        const auto x = 18.0f + static_cast<float>(c) * (barWidth + 12.0f);
-        const juce::Rectangle<float> bar { x, barTop, barWidth, barHeight };
-        g.setColour(background);
-        g.fillRoundedRectangle(bar, 5.0f);
-        const auto fillHeight = barHeight * juce::jlimit(0.0f, 1.0f, (levelDb[c] + 72.0f) / 72.0f);
-        juce::ColourGradient gradient(mint, x, bar.getBottom(), coral, x, bar.getY(), false);
-        gradient.addColour(0.8, juce::Colour(0xffffcd7e));
-        g.setGradientFill(gradient);
-        g.fillRoundedRectangle(bar.withY(bar.getBottom() - fillHeight).withHeight(fillHeight), 4.0f);
-        g.setColour(clipSeconds[c] > 0.0f ? coral : line);
-        g.fillRoundedRectangle(x, barTop - 10.0f, barWidth, 4.0f, 2.0f);
-        g.setColour(ink);
-        g.setFont(12.0f);
-        g.drawText(c == 0 ? "L" : "R", static_cast<int>(x), static_cast<int>(bar.getBottom() + 9),
-                   static_cast<int>(barWidth), 18, juce::Justification::centred);
-    }
-    g.setColour(muted);
-    g.setFont(10.0f);
-    for (int db : { 0, -12, -24, -48, -72 })
-    {
-        const auto y = barTop + barHeight * (static_cast<float>(-db) / 72.0f);
-        g.drawText(juce::String(db), getWidth() - 29, static_cast<int>(y - 7), 27, 14,
-                   juce::Justification::centredLeft);
+        const int x = i * (getWidth() / 2); const int width = getWidth() / 2;
+        text(g, i == 0 ? "L" : "R", { x, 0, width, 30 }, 12, muted, true, juce::Justification::centred);
+        const juce::Rectangle<float> bar(static_cast<float>(x + (width - 18) / 2), 30, 18,
+                                         static_cast<float>(getHeight() - 56));
+        g.setColour(juce::Colour(0xff29232f)); g.fillRoundedRectangle(bar, 3);
+        const auto fill = bar.getHeight() * juce::jlimit(0.0f, 1.0f, (levelDb[static_cast<std::size_t>(i)] + 60) / 60);
+        g.setColour(clipSeconds[static_cast<std::size_t>(i)] > 0 ? c.warning : c.accent);
+        g.fillRoundedRectangle(bar.withY(bar.getBottom() - fill).withHeight(fill), 3);
+        text(g, levelDb[static_cast<std::size_t>(i)] <= -60 ? juce::String::fromUTF8("−∞ dB")
+             : juce::String(levelDb[static_cast<std::size_t>(i)], 1),
+             { x - 4, getHeight() - 22, width + 8, 22 }, 10, muted, true, juce::Justification::centred);
     }
 }
-
+void SampleWaveform::updateScope() { scopeFrames = processor.consumeScope(scope); }
 void SampleWaveform::paint(juce::Graphics& g)
 {
-    const auto [background, panel, line, ink, muted, mint, coral] = palette(lightMode);
-    const auto area = getLocalBounds().toFloat();
-    g.setColour(panel);
-    g.fillRoundedRectangle(area, 16.0f);
-    g.setColour(line);
-    g.drawRoundedRectangle(area.reduced(0.5f), 16.0f, 1.0f);
-    auto content = getLocalBounds().reduced(14);
-    auto title = content.removeFromTop(26);
-    g.setColour(muted);
-    g.setFont(uiFont(11.0f, juce::Font::bold));
-    g.drawText(completedOnly ? "MUESTRA GRABADA" : "CAPTURA EN CURSO", title, juce::Justification::centredLeft);
-    const auto canDrag = snapshot.hasUsableFile && !isBusy(snapshot.state);
-    g.setColour(canDrag ? mint : muted);
-    g.drawText(canDrag ? "DRAG WAV TO DAW" : "STEREO  /  24-BIT PCM",
-               title, juce::Justification::centredRight);
-    auto footer = content.removeFromBottom(30);
-    content.reduce(0, 8);
-    g.setColour(line.withAlpha(0.7f));
-    for (int column = 1; column < 10; ++column)
+    const auto c = palette(lightMode); const auto bounds = getLocalBounds();
+    if (completedOnly)
     {
-        const auto x = content.getX() + content.getWidth() * column / 10;
-        g.drawVerticalLine(x, static_cast<float>(content.getY()), static_cast<float>(content.getBottom()));
+        g.setColour(c.field); g.fillRoundedRectangle(bounds.toFloat(), 10);
+        g.setColour(c.line.withAlpha(0.5f)); g.drawRoundedRectangle(bounds.toFloat().reduced(0.5f), 10, 1);
     }
-    g.drawHorizontalLine(content.getY() + content.getHeight() / 4,
-                         static_cast<float>(content.getX()), static_cast<float>(content.getRight()));
-    g.drawHorizontalLine(content.getY() + content.getHeight() * 3 / 4,
-                         static_cast<float>(content.getX()), static_cast<float>(content.getRight()));
-    const auto duration = snapshot.sampleRate > 0.0
-                        ? static_cast<double>(snapshot.frames) / snapshot.sampleRate : 0.0;
-    if (snapshot.frames > 0)
+    g.setColour(completedOnly ? c.line : juce::Colour(0xff332b3d));
+    for (int i : { 1, 3 }) g.drawHorizontalLine(getHeight() * i / 4, 0, static_cast<float>(getWidth()));
+    if (completedOnly && snapshot.frames > 0 && snapshot.hasUsableFile)
     {
-        g.setColour(mint);
-        processor.drawWaveform(g, content, duration);
+        const auto duration = static_cast<double>(snapshot.frames) / snapshot.sampleRate;
+        g.setColour(c.accent); processor.drawWaveform(g, bounds.reduced(1), duration);
+        if (processor.isPreviewPlaying())
+        {
+            g.setColour(c.text);
+            const auto x = static_cast<int>(processor.previewPosition() / juce::jmax(0.1, duration) * getWidth());
+            g.drawVerticalLine(juce::jlimit(0, getWidth() - 1, x), 0, static_cast<float>(getHeight()));
+        }
     }
-    else
+    else if (!completedOnly && connected && scopeFrames > 0)
     {
-        g.setColour(ink);
-        g.setFont(uiFont(21.0f, juce::Font::bold));
-        g.drawText(snapshot.state == capture::State::recording ? "Listening to your input..."
-                                                               : (completedOnly ? "La muestra aparecera aqui al pulsar Stop." : "Lista para la siguiente toma."),
-                   content, juce::Justification::centred);
+        g.setColour(c.accent);
+        for (int channel = 0; channel < 2; ++channel)
+        {
+            juce::Path p; const auto* data = scope.getReadPointer(channel);
+            for (int x = 0; x < getWidth(); ++x)
+            {
+                const auto sample = data[juce::jmin(scopeFrames - 1, x * scopeFrames / juce::jmax(1, getWidth()))];
+                const auto y = getHeight() * (channel == 0 ? 0.25f : 0.75f)
+                    - juce::jlimit(-1.0f, 1.0f, sample) * getHeight() * 0.2f;
+                if (x == 0) p.startNewSubPath(0, y); else p.lineTo(static_cast<float>(x), y);
+            }
+            g.strokePath(p, juce::PathStrokeType(1));
+        }
     }
-    g.setColour(muted);
-    g.setFont(12.0f);
-    g.drawText(snapshot.sampleRate > 0.0 ? juce::String(snapshot.sampleRate / 1000.0, 1) + " kHz"
-                                        : "DAW input", footer, juce::Justification::centredLeft);
-    g.drawText(formatTime(duration), footer, juce::Justification::centredRight);
-    setMouseCursor(canDrag ? juce::MouseCursor::DraggingHandCursor : juce::MouseCursor::NormalCursor);
+    else text(g, completedOnly ? "Sin toma finalizada" : (connected ? "Entrada del canal del DAW" : "Sin fuente conectada"),
+              bounds.reduced(12), 14, completedOnly ? c.muted : juce::Colour(0xffaa9bbd), false, juce::Justification::centred);
+    setMouseCursor(completedOnly && snapshot.hasUsableFile && !isBusy(snapshot.state)
+                   ? juce::MouseCursor::DraggingHandCursor : juce::MouseCursor::NormalCursor);
 }
-
-void SampleWaveform::mouseDown(const juce::MouseEvent& event)
+void SampleWaveform::mouseDown(const juce::MouseEvent& e)
 {
-    dragStarted = false;
-    dragFile = juce::File {};
-    if (event.mods.isLeftButtonDown() && snapshot.hasUsableFile && !isBusy(snapshot.state))
-        dragFile = snapshot.file;
+    dragStarted = false; dragFile = juce::File {};
+    if (completedOnly && e.mods.isLeftButtonDown() && snapshot.hasUsableFile && !isBusy(snapshot.state)) dragFile = snapshot.file;
 }
-
-void SampleWaveform::mouseDrag(const juce::MouseEvent& event)
+void SampleWaveform::mouseDrag(const juce::MouseEvent& e)
 {
-    if (dragStarted || !dragFile.existsAsFile() || event.getDistanceFromDragStart() < 6)
-        return;
-    // Native file drag, not startDragging(), which is for JUCE-internal data.
+    if (dragStarted || !dragFile.existsAsFile() || e.getDistanceFromDragStart() < 6) return;
     dragStarted = true;
-    const auto started = juce::DragAndDropContainer::performExternalDragDropOfFiles(
-        juce::StringArray { dragFile.getFullPathName() }, false, this);
-    if (!started)
-        setMouseCursor(juce::MouseCursor::NormalCursor);
+    juce::DragAndDropContainer::performExternalDragDropOfFiles({ dragFile.getFullPathName() }, false, this);
 }
+void SampleWaveform::mouseUp(const juce::MouseEvent&) { dragStarted = false; dragFile = juce::File {}; }
 
-void SampleWaveform::mouseUp(const juce::MouseEvent&)
+TestChannel::TestChannel()
 {
-    dragStarted = false;
-    dragFile = juce::File {};
+    addAndMakeVisible(play); play.setEnabled(false);
+    play.onClick = [this] { if (onPlay && file.existsAsFile()) onPlay(file); };
+}
+void TestChannel::paint(juce::Graphics& g)
+{
+    const auto c = palette(lightMode); const auto area = getLocalBounds().toFloat().reduced(0.5f);
+    g.setColour(hovering ? c.panel : c.field); g.fillRoundedRectangle(area, 10);
+    juce::Path outline, dashed; outline.addRoundedRectangle(area, 10);
+    const float dashes[] { 3, 4 }; juce::PathStrokeType(1).createDashedStroke(dashed, outline, dashes, 2);
+    g.setColour(hovering ? c.accent : c.line); g.fillPath(dashed);
+    text(g, "CANAL 02", { 12, 13, 120, 18 }, 12, c.muted, true);
+    text(g, "Prueba de arrastre", { 12, 31, 130, 18 }, 11, c.muted, true);
+    text(g, file == juce::File {} ? juce::String::fromUTF8("Suelta aquí la muestra grabada") : file.getFileName(),
+         { 144, 12, getWidth() - 270, getHeight() - 24 }, 14, c.text);
+}
+void TestChannel::resized() { play.setBounds(getWidth() - 112, 12, 100, getHeight() - 24); }
+bool TestChannel::isInterestedInFileDrag(const juce::StringArray& files)
+{ return files.size() == 1 && juce::File(files[0]).hasFileExtension("wav"); }
+void TestChannel::fileDragEnter(const juce::StringArray&, int, int) { hovering = true; repaint(); }
+void TestChannel::fileDragExit(const juce::StringArray&) { hovering = false; repaint(); }
+void TestChannel::filesDropped(const juce::StringArray& files, int, int)
+{
+    hovering = false;
+    if (isInterestedInFileDrag(files) && juce::File(files[0]).existsAsFile()) { file = juce::File(files[0]); play.setEnabled(true); }
+    repaint();
 }
 
 LoopCaptureAudioProcessorEditor::LoopCaptureAudioProcessorEditor(LoopCaptureAudioProcessor& p)
     : AudioProcessorEditor(&p), processor(p), waveform(p), samplePreview(p, true)
 {
-    setLookAndFeel(&lookAndFeel);
-    setOpaque(true);
+    setLookAndFeel(&lookAndFeel); setOpaque(true);
     inputGain.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
-    inputGain.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 100, 28);
-    inputGain.setTextValueSuffix(" dB");
-    inputGain.setDoubleClickReturnValue(true, 0.0);
-    inputGain.setTooltip("Input gain. Captured audio and meters are measured before Monitor mute.");
-    monitorButton.setClickingTogglesState(true);
-    monitorButton.setTooltip("Listen to input. Turning this off does not mute the recording.");
-    revealButton.setTooltip("Reveal the WAV. Copy it to your project folder to keep it permanently.");
-    gainLabel.setText("INPUT GAIN", juce::dontSendNotification);
-    gainLabel.setFont(uiFont(11.0f, juce::Font::bold));
-    timeLabel.setFont(uiFont(25.0f, juce::Font::plain, true));
+    inputGain.setRotaryParameters(juce::MathConstants<float>::pi * 1.25f, juce::MathConstants<float>::pi * 2.75f, true);
+    inputGain.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
+    gainRange.setSliderStyle(juce::Slider::LinearHorizontal); gainRange.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
+    inputGain.setDoubleClickReturnValue(true, 0); gainRange.setDoubleClickReturnValue(true, 0);
+    inputGain.setTooltip("Ganancia de entrada: doble clic para volver a 0 dB.");
+    monitorButton.setTooltip(juce::String::fromUTF8("Monitorear la entrada. Desactivarlo no silencia la grabación."));
+    recordButton.setComponentID("record");
+    viewSelect.addItem("Rack", 1); viewSelect.addItem("Mesa", 2); viewSelect.setSelectedId(1, juce::dontSendNotification);
+    viewSelect.setName("Interfaz de prueba");
+    sourceSelect.addItem("Entrada / cable virtual", 1); sourceSelect.addItem(juce::String::fromUTF8("Audio sistema vía DAW"), 2);
+    sourceSelect.setSelectedId(1, juce::dontSendNotification);
+    sourceSelect.setTooltip("Selecciona el cable virtual en la entrada del Mixer de FL Studio.");
+    deviceSelect.addItem(juce::String::fromUTF8("Canal estéreo del DAW"), 1); deviceSelect.setSelectedId(1, juce::dontSendNotification); deviceSelect.setEnabled(false);
+    for (auto* label : { &statusLabel, &sampleName, &sampleMeta }) label->setFont(uiFont(label == &sampleName ? 16.0f : 14.0f));
+    sampleMeta.setFont(uiFont(12, true)); timeLabel.setFont(uiFont(19, true));
     timeLabel.setJustificationType(juce::Justification::centredRight);
-    statusLabel.setFont(uiFont(13.0f));
-    hintLabel.setText("Route the virtual cable into this DAW track. Record, stop, then drag the sample.",
-                      juce::dontSendNotification);
-    hintLabel.setFont(uiFont(12.0f));
-    for (juce::Component* component : std::array<juce::Component*, 14> { &inputGain,
-          &recordButton, &monitorButton, &revealButton, &gainLabel, &timeLabel,
-          &statusLabel, &hintLabel, &meter, &waveform, &samplePreview, &saveButton, &themeButton, &viewButton })
+    for (juce::Component* component : std::array<juce::Component*, 19> { &inputGain, &gainRange, &recordButton,
+         &connectButton, &monitorButton, &playButton, &revealButton, &saveButton, &themeButton, &viewSelect,
+         &sourceSelect, &deviceSelect, &statusLabel, &timeLabel, &sampleName, &sampleMeta, &meter, &waveform, &samplePreview })
         addAndMakeVisible(component);
-
-    gainAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
-        processor.parameters, "inputGain", inputGain);
-    monitorAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
-        processor.parameters, "monitor", monitorButton);
+    addAndMakeVisible(testChannel);
+    gainAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(p.parameters, "inputGain", inputGain);
+    rangeAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(p.parameters, "inputGain", gainRange);
+    monitorAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(p.parameters, "monitor", monitorButton);
+    connectButton.onClick = [this]
+    {
+        connected = !connected; exportMessage.clear();
+        if (!connected) { processor.stopRecording(); processor.stopPreview(); }
+        connectButton.setButtonText(connected ? "Desconectar" : "Conectar"); timerCallback();
+    };
     recordButton.onClick = [this]
     {
-        exportMessage.clear();
-        const auto state = processor.getSnapshot().state;
-        if (state == capture::State::recording || state == capture::State::starting)
-            processor.stopRecording();
-        else if (state != capture::State::stopping)
-            processor.startRecording();
+        exportMessage.clear(); const auto s = processor.getSnapshot().state;
+        if (s == capture::State::recording || s == capture::State::starting) processor.stopRecording();
+        else if (connected && s != capture::State::stopping) processor.startRecording();
         timerCallback();
     };
-    revealButton.onClick = [this]
-    {
-        const auto snapshot = processor.getSnapshot();
-        if (snapshot.hasUsableFile && !isBusy(snapshot.state))
-            snapshot.file.revealToUser();
-    };
+    playButton.onClick = [this] { playSample(processor.getSnapshot().file); };
+    testChannel.onPlay = [this](const juce::File& file) { playSample(file); };
+    revealButton.onClick = [this] { saveSample(); };
+    revealButton.setTooltip("Exportar el WAV a la carpeta que elijas.");
     saveButton.onClick = [this] { saveSample(); };
     themeButton.onClick = [this] { lightMode = !lightMode; applyTheme(); };
-    viewButton.onClick = [this]
-    {
-        mesaView = !mesaView;
-        viewButton.setButtonText(mesaView ? "Interfaz: Mesa" : "Interfaz: Rack");
-        inputGain.setSliderStyle(mesaView ? juce::Slider::LinearHorizontal
-                                          : juce::Slider::RotaryHorizontalVerticalDrag);
-        inputGain.setTextBoxStyle(mesaView ? juce::Slider::TextBoxRight : juce::Slider::TextBoxBelow,
-                                  false, 100, 28);
-        resized(); repaint();
-    };
+    viewSelect.onChange = [this] { mesaView = viewSelect.getSelectedId() == 2; resized(); repaint(); };
+    connected = isBusy(processor.getSnapshot().state);
+    connectButton.setButtonText(connected ? "Desconectar" : "Conectar");
     applyTheme();
-    setResizable(true, true);
-    setResizeLimits(820, 720, 1400, 950);
-    setSize(960, 720);
-    lastTickMs = juce::Time::getMillisecondCounterHiRes();
-    timerCallback();
-    startTimerHz(60);
+    // Match the web rack geometry. Host DPI scales this stable logical canvas.
+    setResizable(false, false); setSize(1032, 848);
+    lastTickMs = juce::Time::getMillisecondCounterHiRes(); timerCallback(); startTimerHz(60);
 }
-
 LoopCaptureAudioProcessorEditor::~LoopCaptureAudioProcessorEditor()
 {
-    stopTimer();
-    saveChooser.reset();
-    monitorAttachment.reset();
-    gainAttachment.reset();
-    setLookAndFeel(nullptr);
-    // Closing the editor does not stop a take. Processor/worker own its lifetime.
+    stopTimer(); processor.stopPreview(); saveChooser.reset(); monitorAttachment.reset();
+    rangeAttachment.reset(); gainAttachment.reset(); setLookAndFeel(nullptr);
 }
-
 void LoopCaptureAudioProcessorEditor::timerCallback()
 {
-    const auto [background, panel, line, ink, muted, mint, coral] = palette(lightMode);
-    const auto now = juce::Time::getMillisecondCounterHiRes();
-    const auto delta = static_cast<float>(juce::jlimit(0.001, 0.25, (now - lastTickMs) / 1000.0));
-    lastTickMs = now;
-    meter.update(processor.consumePeaks(), delta);
-    const auto snapshot = processor.getSnapshot();
-    auto live = snapshot;
-    if (!isBusy(snapshot.state)) { live.frames = 0; live.hasUsableFile = false; }
-    waveform.update(live);
-    auto completed = snapshot;
-    if (isBusy(snapshot.state)) { completed.frames = 0; completed.hasUsableFile = false; }
-    samplePreview.update(completed);
-    // Only meters need 60 FPS; waveform has its own 30 Hz dirty region.
-    if ((++tick % 2) == 0)
-    { waveform.repaint(); samplePreview.repaint(); }
-    const auto seconds = snapshot.sampleRate > 0.0
-                       ? static_cast<double>(snapshot.frames) / snapshot.sampleRate : 0.0;
+    const auto c = palette(lightMode); const auto now = juce::Time::getMillisecondCounterHiRes();
+    meter.update(processor.consumePeaks(), static_cast<float>(juce::jlimit(0.001, 0.25, (now - lastTickMs) / 1000)));
+    lastTickMs = now; const auto s = processor.getSnapshot(); const auto busy = isBusy(s.state);
+    waveform.setConnected(connected); waveform.updateScope(); waveform.update(s); waveform.repaint();
+    auto completed = s; if (busy) { completed.frames = 0; completed.hasUsableFile = false; }
+    samplePreview.update(completed); samplePreview.repaint();
+    const auto seconds = s.sampleRate > 0 ? static_cast<double>(s.frames) / s.sampleRate : 0;
     timeLabel.setText(formatTime(seconds), juce::dontSendNotification);
-    statusLabel.setText(!exportMessage.isEmpty() ? exportMessage
-                         : (snapshot.message.isEmpty() ? "Ready for a new take" : snapshot.message),
-                        juce::dontSendNotification);
-    statusLabel.setColour(juce::Label::textColourId,
-                           snapshot.state == capture::State::error ? coral : muted);
-    const auto recording = snapshot.state == capture::State::recording;
-    const auto starting = snapshot.state == capture::State::starting;
-    const auto stopping = snapshot.state == capture::State::stopping;
-    recordButton.setButtonText(stopping ? "Finalising..." : (recording || starting ? "Stop" : "Record"));
-    recordButton.setEnabled(!stopping);
-    revealButton.setEnabled(snapshot.hasUsableFile && !isBusy(snapshot.state));
-    saveButton.setEnabled(snapshot.hasUsableFile && !isBusy(snapshot.state) && !saving);
+    sampleName.setText(s.hasUsableFile && !busy ? s.file.getFileName() : "Muestra grabada", juce::dontSendNotification);
+    sampleMeta.setText(s.hasUsableFile && !busy ? formatTime(seconds) + juce::String::fromUTF8(" · ") + juce::String(s.sampleRate / 1000, 1) + juce::String::fromUTF8(" kHz · 24-bit PCM")
+                      : juce::String::fromUTF8("La toma aparecerá aquí al pulsar Stop."), juce::dontSendNotification);
+    const auto recording = s.state == capture::State::recording || s.state == capture::State::starting;
+    recordButton.setToggleState(recording, juce::dontSendNotification);
+    recordButton.setButtonText(s.state == capture::State::stopping ? juce::String::fromUTF8("Finalizando…") : recording ? "Stop" : "Record");
+    recordButton.setEnabled(connected && s.state != capture::State::stopping && processor.getSampleRate() > 0);
+    const auto ready = s.hasUsableFile && !busy;
+    playButton.setEnabled(ready); revealButton.setEnabled(ready); saveButton.setEnabled(ready && !saving);
+    playButton.setButtonText(processor.isPreviewPlaying() ? "Detener" : "Escuchar");
+    testChannel.play.setButtonText(processor.isPreviewPlaying() ? "Detener" : "Escuchar");
+    testChannel.play.setEnabled(testChannel.file != juce::File {} && !busy);
+    juce::String status;
+    if (!exportMessage.isEmpty()) status = exportMessage;
+    else if (s.state == capture::State::error) status = s.message;
+    else if (s.state == capture::State::stopping) status = juce::String::fromUTF8("Finalizando archivo WAV…");
+    else if (recording) status = juce::String::fromUTF8("Grabando la entrada estéreo del canal.");
+    else if (ready) status = "Muestra lista. Arrastra el WAV a otro canal del DAW.";
+    else if (connected) status = "Entrada del DAW conectada. Pulsa Record para capturar.";
+    else status = juce::String::fromUTF8("Conecta una fuente para habilitar la grabación.");
+    statusLabel.setText(status, juce::dontSendNotification);
+    statusLabel.setColour(juce::Label::textColourId, s.state == capture::State::error ? c.warning : c.muted);
 }
-
-void CaptureLookAndFeel::drawRotarySlider(juce::Graphics& g, int x, int y, int width, int height,
-                                          float position, float startAngle, float endAngle, juce::Slider&)
+void LoopCaptureAudioProcessorEditor::playSample(const juce::File& file)
 {
-    const auto [background, panel, line, ink, muted, mint, coral] = palette(lightMode);
-    const auto radius = juce::jmin(static_cast<float>(width), static_cast<float>(height)) * 0.5f - 12.0f;
-    const auto centre = juce::Point<float>(static_cast<float>(x) + static_cast<float>(width) * 0.5f,
-                                          static_cast<float>(y) + static_cast<float>(height) * 0.5f);
-    const auto bounds = juce::Rectangle<float>(radius * 2.0f, radius * 2.0f).withCentre(centre);
-    juce::DropShadow(juce::Colours::black.withAlpha(0.25f), 14, { 3, 5 }).drawForRectangle(g, bounds.toNearestInt());
-    g.setGradientFill(juce::ColourGradient(panel.brighter(0.12f), bounds.getTopLeft(),
-                                          background.darker(0.15f), bounds.getBottomRight(), false));
-    g.fillEllipse(bounds); g.setColour(line); g.drawEllipse(bounds, 1.0f);
-    juce::Path track, active;
-    track.addCentredArc(centre.x, centre.y, radius - 6.0f, radius - 6.0f, 0.0f, startAngle, endAngle, true);
-    const auto angle = startAngle + position * (endAngle - startAngle);
-    active.addCentredArc(centre.x, centre.y, radius - 6.0f, radius - 6.0f, 0.0f, startAngle, angle, true);
-    const juce::PathStrokeType stroke(4.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded);
-    g.setColour(line); g.strokePath(track, stroke); g.setColour(mint); g.strokePath(active, stroke);
-    const auto pointer = centre.getPointOnCircumference(radius * 0.65f, angle);
-    g.drawLine(juce::Line<float>(centre.getPointOnCircumference(radius * 0.45f, angle), pointer), 4.0f);
-    g.setFont(uiFont(12.0f, juce::Font::plain, true));g.setColour(muted);
-    g.drawText("GAIN", bounds.toNearestInt().withTrimmedTop(static_cast<int>(radius)), juce::Justification::centred);
+    if (processor.isPreviewPlaying()) processor.stopPreview();
+    else if (!processor.startPreview(file)) exportMessage = "No se pudo reproducir. Comprueba el motor de audio del DAW.";
+    timerCallback();
 }
-
 void LoopCaptureAudioProcessorEditor::applyTheme()
 {
-    const auto [background, panel, line, ink, muted, mint, coral] = palette(lightMode);
-    lookAndFeel.setLightMode(lightMode);
-    meter.setLightMode(lightMode); waveform.setLightMode(lightMode); samplePreview.setLightMode(lightMode);
-    recordButton.setColour(juce::TextButton::buttonColourId, mint);
-    recordButton.setColour(juce::TextButton::textColourOffId, background);
-    for (auto* label : { &statusLabel, &hintLabel, &gainLabel })
-        label->setColour(juce::Label::textColourId, muted);
-    themeButton.setButtonText(lightMode ? "Modo oscuro" : "Modo claro");
-    sendLookAndFeelChange(); repaint();
+    const auto c = palette(lightMode); lookAndFeel.setLightMode(lightMode);
+    meter.setLightMode(lightMode); waveform.setLightMode(lightMode); samplePreview.setLightMode(lightMode); testChannel.setLightMode(lightMode);
+    for (auto* label : { &statusLabel, &sampleMeta }) label->setColour(juce::Label::textColourId, c.muted);
+    sampleName.setColour(juce::Label::textColourId, c.text); timeLabel.setColour(juce::Label::textColourId, juce::Colour(0xffeae2f5));
+    themeButton.setButtonText(lightMode ? "Modo oscuro" : "Modo claro"); sendLookAndFeelChange(); repaint();
 }
-
 void LoopCaptureAudioProcessorEditor::saveSample()
 {
-    const auto snapshot = processor.getSnapshot();
-    if (saving || !snapshot.hasUsableFile || isBusy(snapshot.state)) return;
-    const auto sourceFile = snapshot.file; // Pin the completed take before opening the dialog.
+    const auto s = processor.getSnapshot(); if (saving || !s.hasUsableFile || isBusy(s.state)) return;
+    const auto source = s.file;
     saveChooser = std::make_unique<juce::FileChooser>("Guardar muestra WAV",
-        juce::File::getSpecialLocation(juce::File::userDocumentsDirectory).getChildFile(sourceFile.getFileName()), "*.wav");
-    saving = true; saveButton.setEnabled(false);
-    const juce::Component::SafePointer<LoopCaptureAudioProcessorEditor> safe(this);
+        juce::File::getSpecialLocation(juce::File::userDocumentsDirectory).getChildFile(source.getFileName()), "*.wav");
+    saving = true; saveButton.setEnabled(false); const juce::Component::SafePointer<LoopCaptureAudioProcessorEditor> safe(this);
     saveChooser->launchAsync(juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles
-                            | juce::FileBrowserComponent::warnAboutOverwriting,
-        [safe, sourceFile](const juce::FileChooser& chooser)
+        | juce::FileBrowserComponent::warnAboutOverwriting, [safe, source](const juce::FileChooser& chooser)
+    {
+        if (!safe) return;
+        const auto dest = chooser.getResult();
+        if (dest == juce::File {}) { safe->saving = false; safe->timerCallback(); return; }
+        const auto started = juce::Thread::launch([safe, source, dest]
         {
-            if (!safe) return;
-            const auto destination = chooser.getResult();
-            if (destination == juce::File {}) { safe->saving = false; safe->timerCallback(); return; }
-            const auto started = juce::Thread::launch([safe, sourceFile, destination]
+            const auto ok = source == dest || source.copyFileTo(dest);
+            juce::MessageManager::callAsync([safe, ok, dest]
             {
-                const auto ok = sourceFile == destination || sourceFile.copyFileTo(destination);
-                juce::MessageManager::callAsync([safe, ok, destination]
-                {
-                    if (!safe) return;
-                    safe->saving = false;
-                    safe->exportMessage = ok ? "WAV guardado: " + destination.getFullPathName()
-                                             : "No se pudo guardar el WAV. Revisa la carpeta de destino.";
-                    safe->timerCallback();
-                });
+                if (!safe) return;
+                safe->saving = false;
+                safe->exportMessage = ok ? "WAV guardado: " + dest.getFullPathName() : "No se pudo guardar el WAV. Revisa la carpeta de destino.";
+                safe->timerCallback();
             });
-            if (!started) { safe->saving = false; safe->exportMessage = "No se pudo iniciar el guardado."; safe->timerCallback(); }
         });
+        if (!started) { safe->saving = false; safe->exportMessage = "No se pudo iniciar el guardado."; safe->timerCallback(); }
+    });
 }
-
 void LoopCaptureAudioProcessorEditor::paint(juce::Graphics& g)
 {
-    const auto [background, panel, line, ink, muted, mint, coral] = palette(lightMode);
-    g.setGradientFill(juce::ColourGradient(panel, 0.0f, 0.0f, background,
-                                          static_cast<float>(getWidth()), static_cast<float>(getHeight()), false));
-    g.fillAll();
-    g.setColour(ink);g.setFont(uiFont(28.0f));
-    g.drawText("JUCE PLUGGIN", 28, 18, 330, 38, juce::Justification::centredLeft);
-    g.setColour(muted);g.setFont(uiFont(11.0f, juce::Font::plain, true));
-    g.drawText(juce::String::fromUTF8("BY FR3DO - Demo en pañales"), 29, 57, 360, 20, juce::Justification::centredLeft);
-    g.setColour(line);g.drawHorizontalLine(93, 28.0f, static_cast<float>(getWidth() - 28));
-    g.setColour(muted);g.drawText("FR3DO / DEMO", getWidth() - 220, getHeight() - 25, 190, 18,
-                                 juce::Justification::centredRight);
+    const auto c = palette(lightMode);
+    g.setGradientFill(juce::ColourGradient(c.panel, 0, 0, c.bg, static_cast<float>(getWidth()), static_cast<float>(getHeight()), false));
+    g.fillAll(); g.setColour(c.line); g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(0.5f), 22, 1);
+    text(g, "JUCE", { 24, 20, 61, 34 }, 28, c.text);
+    text(g, "PLUGGIN", { 83, 20, 170, 34 }, 28, c.accent);
+    text(g, juce::String::fromUTF8("BY FR3DO - Demo en pañales"), { 24, 56, 440, 18 }, 11, c.muted, true);
+    g.setColour(c.line); g.drawHorizontalLine(92, 0, static_cast<float>(getWidth()));
+    text(g, "ENTRADA", { 24, 116, 220, 26 }, 12, c.muted, true);
+    text(g, "Fuente de captura", { 24, 154, 220, 20 }, 14, c.muted);
+    text(g, "Dispositivo", { 24, 237, 220, 20 }, 14, c.muted);
+    text(g, "GANANCIA", { gainArea.getX(), gainArea.getY(), mesaView ? 120 : gainArea.getWidth(), 26 }, 12, c.muted, true,
+         mesaView ? juce::Justification::centredLeft : juce::Justification::centred);
+    if (!mesaView)
+    {
+        g.setColour(c.line); g.drawVerticalLine(gainArea.getX(), 116, 380); g.drawVerticalLine(gainArea.getRight(), 116, 380);
+        text(g, juce::String::fromUTF8("−24"), { gainArea.getX() + 12, 317, 55, 20 }, 11, c.muted, true);
+        text(g, "+12 dB", { gainArea.getRight() - 67, 317, 55, 20 }, 11, c.muted, true, juce::Justification::centredRight);
+    }
+    else { g.setColour(c.line); g.drawHorizontalLine(gainArea.getY() - 12, 24, static_cast<float>(getWidth() - 24)); }
+    g.setColour(juce::Colour(0xff121016)); g.fillRoundedRectangle(consoleArea.toFloat(), 12);
+    g.setColour(juce::Colours::black.withAlpha(0.4f)); g.drawRoundedRectangle(consoleArea.toFloat().reduced(0.5f), 12, 1);
+    text(g, juce::String::fromUTF8("ENTRADA · L / R"), { consoleArea.getX() + 12, consoleArea.getY() + 12, 200, 42 }, 11, juce::Colour(0xffaa9bbd), true);
+    text(g, "WAV / 24-bit PCM", { recordButton.getRight() + 12, recordButton.getY() + 3, 260, 18 }, 11, c.muted, true);
+    text(g, juce::String::fromUTF8("30 min por toma · local"), { recordButton.getRight() + 12, recordButton.getY() + 20, 260, 18 }, 11, c.muted, true);
+    g.setColour(c.line); g.drawHorizontalLine(sampleTop, 24, static_cast<float>(getWidth() - 24));
+    text(g, "STEREO / WAV", { getWidth() - 170, sampleTop + 28, 146, 26 }, 12, c.muted, true, juce::Justification::centredRight);
+    text(g, juce::String::fromUTF8("Arrastra la onda cuando esté lista."), { 24, mesaView ? 640 : sampleTop + 193, mesaView ? 550 : 330, mesaView ? 44 : 64 }, 14, c.muted);
+    g.setColour(c.line); g.drawHorizontalLine(footerTop, 0, static_cast<float>(getWidth()));
+    text(g, juce::String::fromUTF8("Captura local · audio no subido"), { getWidth() - 310, footerTop + 12, 286, 54 }, 11, c.accent, true, juce::Justification::centredRight);
 }
-
 void LoopCaptureAudioProcessorEditor::resized()
 {
-    themeButton.setBounds(getWidth() - 150, 26, 122, 40);
-    viewButton.setBounds(getWidth() - 296, 26, 136, 40);
-    auto area = getLocalBounds().reduced(28);area.removeFromTop(80);area.removeFromBottom(24);
-    auto transport = area.removeFromTop(46);
-    recordButton.setBounds(transport.removeFromLeft(124));transport.removeFromLeft(12);
-    monitorButton.setBounds(transport.removeFromLeft(124));
-    timeLabel.setBounds(transport.removeFromRight(184));
-    area.removeFromTop(16);
-    auto footer = area.removeFromBottom(52);
-    statusLabel.setBounds(footer.removeFromTop(26));hintLabel.setBounds(footer);
-    area.removeFromBottom(12);
-    auto exports = area.removeFromBottom(42);
-    saveButton.setBounds(exports.removeFromRight(140));exports.removeFromRight(12);
-    revealButton.setBounds(exports.removeFromRight(124));
-    area.removeFromBottom(12);
-    samplePreview.setBounds(area.removeFromBottom(174));area.removeFromBottom(18);
-    if (mesaView)
+    themeButton.setBounds(getWidth() - 132, 24, 108, 44); viewSelect.setBounds(getWidth() - 248, 24, 108, 44);
+    sourceSelect.setBounds(24, 181, 220, 44); deviceSelect.setBounds(24, 264, 220, 44); connectButton.setBounds(24, 322, 220, 44);
+    if (!mesaView)
     {
-        auto row = area.removeFromBottom(48);gainLabel.setBounds(row.removeFromLeft(108));
-        inputGain.setBounds(row);area.removeFromBottom(12);
-        meter.setBounds(area.removeFromRight(125));area.removeFromRight(16);waveform.setBounds(area);
+        gainArea = { 268, 116, 172, 264 }; inputGain.setBounds(283, 142, 142, 142);
+        gainRange.setBounds(280, 289, 148, 28); monitorButton.setBounds(305, 340, 116, 38);
+        consoleArea = { 464, 116, getWidth() - 488, 204 }; sampleTop = 400;
+        sampleName.setBounds(24, 422, getWidth() - 210, 25); sampleMeta.setBounds(24, 447, getWidth() - 210, 20);
+        samplePreview.setBounds(24, 476, getWidth() - 48, 106);
+        playButton.setBounds(getWidth() - 418, 594, 126, 52); saveButton.setBounds(getWidth() - 284, 594, 126, 52);
+        revealButton.setBounds(getWidth() - 150, 594, 126, 52); testChannel.setBounds(24, 676, getWidth() - 48, 70);
     }
     else
     {
-        auto knob = area.removeFromLeft(180);gainLabel.setBounds(knob.removeFromTop(20));inputGain.setBounds(knob);
-        area.removeFromLeft(18);meter.setBounds(area.removeFromRight(125));area.removeFromRight(16);waveform.setBounds(area);
+        consoleArea = { 268, 116, getWidth() - 292, 204 };
+        gainArea = { 24, 392, getWidth() - 48, 82 }; inputGain.setBounds(164, 392, 82, 82);
+        gainRange.setBounds(266, 411, getWidth() - 450, 36); monitorButton.setBounds(getWidth() - 164, 414, 140, 38);
+        sampleTop = 490; sampleName.setBounds(24, 506, getWidth() - 210, 25); sampleMeta.setBounds(24, 531, getWidth() - 210, 20);
+        samplePreview.setBounds(24, 558, getWidth() - 48, 70);
+        playButton.setBounds(getWidth() - 418, 640, 126, 44); saveButton.setBounds(getWidth() - 284, 640, 126, 44);
+        revealButton.setBounds(getWidth() - 150, 640, 126, 44); testChannel.setBounds(24, 700, getWidth() - 48, 60);
     }
+    timeLabel.setBounds(consoleArea.getRight() - 223, consoleArea.getY() + 12, 113, 42);
+    waveform.setBounds(consoleArea.getX() + 12, consoleArea.getY() + 54, consoleArea.getWidth() - 116, 130);
+    meter.setBounds(consoleArea.getRight() - 88, consoleArea.getY() + 12, 76, 180);
+    recordButton.setBounds(consoleArea.getX(), 336, 132, 44);
+    footerTop = 770; statusLabel.setBounds(24, 780, getWidth() - 350, 54);
 }
