@@ -33,7 +33,7 @@ int main(int argc, char** argv)
 {
     juce::ScopedJuceInitialiser_GUI init;
     runSystemAudioTests();
-    juce::File firstFile, secondFile, overflowFile, destructionFile;
+    juce::File firstFile, secondFile, overflowFile, destructionFile, midiFile;
     {
         LoopCaptureAudioProcessor processor;
         juce::MidiBuffer midi;
@@ -104,6 +104,28 @@ int main(int argc, char** argv)
                 "resampling preserves playback duration");
         juce::Thread::sleep(10);
         processor.prepareToPlay(48000, block);
+
+        // A note from a controller starts a take while the editor is closed.
+        // A pedal-style CC high edge stops it; the worker owns both WAV calls.
+        setParameter(processor, "midiNote", 60.0f);
+        setParameter(processor, "midiCc", 20.0f);
+        midi.addEvent(juce::MidiMessage::noteOn(1, 60, static_cast<juce::uint8>(100)), 0);
+        buffer.clear(); processor.processBlock(buffer, midi);
+        require(midi.isEmpty(), "control MIDI consumed by audio effect");
+        waitFor(processor, capture::State::recording);
+        for (int i = 0; i < 4; ++i)
+        {
+            buffer.clear();
+            processor.processBlock(buffer, midi);
+        }
+        midi.addEvent(juce::MidiMessage::controllerEvent(1, 20, 127), 0);
+        processor.processBlock(buffer, midi);
+        waitFor(processor, capture::State::ready);
+        require(processor.getSnapshot().frames >= static_cast<std::uint64_t>(block * 4),
+                "MIDI note and CC complete a WAV without editor or transport");
+        midiFile = processor.getSnapshot().file;
+        setParameter(processor, "midiNote", -1.0f);
+        setParameter(processor, "midiCc", -1.0f);
 
 
         if (argc == 3 && juce::String(argv[1]) == "--render-ui")
@@ -194,6 +216,7 @@ int main(int argc, char** argv)
     firstFile.deleteFile();
     secondFile.deleteFile();
     overflowFile.deleteFile();
+    midiFile.deleteFile();
     destructionFile.deleteFile();
     std::cout << "PASS: WAV, pre-mute gain, stereo, preview/resampling, callback-free Stop, APVTS, release/cancel, overflow, destruction\n";
 }

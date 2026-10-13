@@ -15,10 +15,18 @@ y permite guardar el archivo o arrastrarlo a otra pista.
 El plugin nativo no necesita navegador. En Windows, el audio del sistema puede capturarse directamente con WASAPI loopback.
 También se puede conectar al DAW mediante un cable virtual o una entrada del driver.
 **Conexiones** abre una ventana adicional que enumera salidas de Windows,
-entradas físicas y controladores MIDI informativos, estado de conexión y niveles L/R. Desde allí
+entradas físicas y controladores MIDI detectados, estado de conexión y niveles L/R. Desde allí
 puedes elegir y conectar una salida para samplear aplicaciones como MPC en
 modo Windows Audio compartido. Las entradas de una interfaz se seleccionan
 en el DAW: el plugin no controla el driver de FL Studio.
+La ventana **Conexiones** permite asignar una **nota MIDI** o un **CC MIDI**
+para alternar Record / Stop. El DAW debe enviar esos mensajes al efecto; la
+asignación se guarda en el proyecto del DAW. El CC responde al cruce de valor
+menor que 64 a valor 64 o superior, útil para un botón o pedal; libéralo antes
+de volver a dispararlo. Por defecto ambos controles están desactivados.
+MPC, Maschine y otros controladores aportan MIDI para controlar la toma; su
+audio requiere una conexión independiente al DAW o a una salida Windows
+compartida. Esta opción no sincroniza el reloj del plugin con el transporte.
 La demo web usa los permisos de captura del navegador.
 
 **Estado:** VST3 Windows x64 compilado y verificado; pendiente de probar en
@@ -77,6 +85,10 @@ mediante el wrapper de JUCE.
   alternativa de 24 bits del requerimiento; no se ofrece un selector 32-bit float.
 - La ganancia es automatizable: `inputGain`, -24 a +12 dB, default 0 dB,
   suavizada en 15 ms. `monitor` también usa APVTS, default desactivado y rampa de 5 ms.
+- `midiNote` y `midiCc` se guardan en APVTS; el plugin declara entrada MIDI
+  al host. El callback solo solicita alternar la toma con un contador atómico;
+  el worker inicia o cierra el WAV aunque el editor esté cerrado. Los mensajes
+  MIDI recibidos se consumen, no se reenvían a instrumentos posteriores.
 - La grabación es **posterior a Input Gain y anterior al mute de Monitor**.
   El audio por encima de 0 dBFS satura al convertirse a PCM; el indicador CLIP
   queda visible un segundo. Reduce Input Gain si aparece.

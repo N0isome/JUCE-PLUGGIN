@@ -55,7 +55,7 @@ public:
     juce::AudioProcessorEditor* createEditor() override;
     bool hasEditor() const override { return true; }
     const juce::String getName() const override { return "JUCE PLUGGIN"; }
-    bool acceptsMidi() const override { return false; }
+    bool acceptsMidi() const override { return true; }
     bool producesMidi() const override { return false; }
     bool isMidiEffect() const override { return false; }
     double getTailLengthSeconds() const override { return systemInput.load() ? 1800.0 : 0.0; }
@@ -100,6 +100,10 @@ private:
     juce::FileOutputStream* takeStream = nullptr; // non-owning; writer owns it
     std::atomic<float>* gainDbParameter = nullptr;
     std::atomic<float>* monitorParameter = nullptr;
+    std::atomic<float>* midiNoteParameter = nullptr;
+    std::atomic<float>* midiCcParameter = nullptr;
+    std::atomic<unsigned> midiToggleRequests { 0 };
+    std::array<bool, 16> midiCcPressed {}; // audio callback owns this state
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> inputGain;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> monitorGain;
     std::array<std::atomic<float>, 2> peaks { 0.0f, 0.0f };

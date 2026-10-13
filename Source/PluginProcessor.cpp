@@ -12,6 +12,10 @@ LoopCaptureAudioProcessor::makeParameters()
         juce::AudioParameterFloatAttributes().withLabel("dB")));
     layout.add(std::make_unique<juce::AudioParameterBool>(
         juce::ParameterID { "monitor", 1 }, "Monitor", false));
+    layout.add(std::make_unique<juce::AudioParameterInt>(
+        juce::ParameterID { "midiNote", 1 }, "Record toggle note", -1, 127, -1));
+    layout.add(std::make_unique<juce::AudioParameterInt>(
+        juce::ParameterID { "midiCc", 1 }, "Record toggle CC", -1, 127, -1));
     return layout;
 }
 
@@ -24,6 +28,8 @@ LoopCaptureAudioProcessor::LoopCaptureAudioProcessor()
 {
     gainDbParameter = parameters.getRawParameterValue("inputGain");
     monitorParameter = parameters.getRawParameterValue("monitor");
+    midiNoteParameter = parameters.getRawParameterValue("midiNote");
+    midiCcParameter = parameters.getRawParameterValue("midiCc");
     formatManager.registerBasicFormats();
     setLatencySamples(0);
     if (!startThread())
@@ -59,10 +65,13 @@ void LoopCaptureAudioProcessor::prepareToPlay(double rate, int)
     monitorGain.setCurrentAndTargetValue(monitorParameter->load() >= 0.5f ? 1.0f : 0.0f);
     for (auto& peak : peaks)
         peak.store(0.0f);
+    midiCcPressed.fill(false);
+    midiToggleRequests.store(0);
 }
 
 void LoopCaptureAudioProcessor::releaseResources()
 {
+    midiToggleRequests.store(0);
     systemCapture.requestStop();
     stopPreview();
     stopRecording();
@@ -73,6 +82,25 @@ void LoopCaptureAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
                                             juce::MidiBuffer& midi)
 {
     juce::ScopedNoDenormals noDenormals;
+    // A host can deliver controller notes/CC while its transport is stopped.
+    // The callback only queues an atomic request; the disk worker opens/closes
+    // WAV files. The MIDI input is consumed (this is an audio effect).
+    const int triggerNote = static_cast<int>(midiNoteParameter->load());
+    const int triggerCc = static_cast<int>(midiCcParameter->load());
+    for (const auto metadata : midi)
+    {
+        const auto message = metadata.getMessage();
+        if (message.isNoteOn() && message.getNoteNumber() == triggerNote)
+            midiToggleRequests.fetch_add(1, std::memory_order_relaxed);
+        if (message.isController() && message.getControllerNumber() == triggerCc)
+        {
+            const auto channel = static_cast<std::size_t>(message.getChannel() - 1);
+            const bool pressed = message.getControllerValue() >= 64;
+            if (pressed && !midiCcPressed[channel])
+                midiToggleRequests.fetch_add(1, std::memory_order_relaxed);
+            midiCcPressed[channel] = pressed;
+        }
+    }
     midi.clear();
     const auto n = buffer.getNumSamples();
     if (buffer.getNumChannels() < 2)
@@ -164,6 +192,7 @@ void LoopCaptureAudioProcessor::processBlockBypassed(juce::AudioBuffer<float>&,
                                                     juce::MidiBuffer& midi)
 {
     midi.clear();
+    midiToggleRequests.store(0);
     systemCapture.requestStop();
     stopPreview();
     stopRecording();
@@ -355,6 +384,14 @@ void LoopCaptureAudioProcessor::run()
     {
         if (threadShouldExit())
             stopRecording();
+        else if ((midiToggleRequests.exchange(0) & 1u) != 0u)
+        {
+            const auto current = gate.state.load();
+            if (current == State::starting || current == State::recording)
+                stopRecording();
+            else if (current != State::stopping)
+                startRecording();
+        }
         servicePreview();
         if (systemInput.load() && !systemCapture.ready())
         {

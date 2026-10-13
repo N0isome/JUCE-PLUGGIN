@@ -261,11 +261,13 @@ void TestChannel::filesDropped(const juce::StringArray& files, int, int)
 class ConnectionsPanel final : public juce::Component
 {
 public:
-    ConnectionsPanel()
+    explicit ConnectionsPanel(LoopCaptureAudioProcessor& processor)
     {
         addAndMakeVisible(output);
         addAndMakeVisible(inputs);
         addAndMakeVisible(midiDevices);
+        addAndMakeVisible(noteTrigger);
+        addAndMakeVisible(ccTrigger);
         addAndMakeVisible(refreshButton);
         addAndMakeVisible(connectButton);
         addAndMakeVisible(status);
@@ -273,6 +275,17 @@ public:
         inputs.setScrollbarsShown(true); inputs.setFont(uiFont(14));
         midiDevices.setMultiLine(true); midiDevices.setReadOnly(true); midiDevices.setCaretVisible(false);
         midiDevices.setScrollbarsShown(true); midiDevices.setFont(uiFont(14));
+        noteTrigger.addItem("Desactivado", 1);
+        ccTrigger.addItem("Desactivado", 1);
+        for (int number = 0; number < 128; ++number)
+        {
+            noteTrigger.addItem("Nota " + juce::String(number), number + 2);
+            ccTrigger.addItem("CC " + juce::String(number), number + 2);
+        }
+        noteAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
+            processor.parameters, "midiNote", noteTrigger);
+        ccAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
+            processor.parameters, "midiCc", ccTrigger);
         status.setFont(uiFont(14)); status.setJustificationType(juce::Justification::centredLeft);
         refreshButton.setButtonText("Actualizar");
         connectButton.setButtonText("Usar esta salida");
@@ -341,6 +354,10 @@ public:
         midiDevices.setColour(juce::TextEditor::backgroundColourId, c.field);
         midiDevices.setColour(juce::TextEditor::textColourId, c.text);
         midiDevices.setColour(juce::TextEditor::outlineColourId, c.line);
+        noteTrigger.setColour(juce::ComboBox::backgroundColourId, c.field);
+        ccTrigger.setColour(juce::ComboBox::backgroundColourId, c.field);
+        noteTrigger.setColour(juce::ComboBox::textColourId, c.text);
+        ccTrigger.setColour(juce::ComboBox::textColourId, c.text);
         status.setColour(juce::Label::textColourId, c.muted);
         repaint();
     }
@@ -354,20 +371,24 @@ public:
         text(g, "ENTRADAS FÍSICAS DETECTADAS", { 24, 215, getWidth() - 48, 24 }, 12, c.accent, true);
         text(g, "Micrófonos y entradas de interfaces: selecciónalas en FL Studio y usa Entrada del DAW / cable.",
              { 24, 240, getWidth() - 48, 40 }, 14, c.muted);
-        g.setColour(c.line); g.drawHorizontalLine(405, 24, static_cast<float>(getWidth() - 24));
-        text(g, "CONTROLADORES MIDI DETECTADOS", { 24, 416, getWidth() - 48, 24 }, 12, c.accent, true);
-        g.setColour(c.line); g.drawHorizontalLine(538, 24, static_cast<float>(getWidth() - 24));
-        text(g, "Un dispositivo MIDI conectado no implica que su audio llegue a Windows. ASIO exclusivo tampoco entra en esta captura.",
-             { 24, 582, getWidth() - 48, 48 }, 13, c.muted);
+        g.setColour(c.line); g.drawHorizontalLine(359, 24, static_cast<float>(getWidth() - 24));
+        text(g, "CONTROLADORES MIDI DETECTADOS", { 24, 367, getWidth() - 48, 24 }, 12, c.accent, true);
+        text(g, "Nota para Record / Stop", { 24, 482, 280, 23 }, 13, c.muted);
+        text(g, "Control CC para Record / Stop", { 362, 482, 290, 23 }, 13, c.muted);
+        text(g, "El DAW debe enviar MIDI al plugin. MPC y Maschine pueden disparar la toma; su audio necesita una entrada aparte.",
+             { 24, 557, getWidth() - 48, 45 }, 13, c.muted);
+        g.setColour(c.line); g.drawHorizontalLine(612, 24, static_cast<float>(getWidth() - 24));
     }
     void resized() override
     {
         output.setBounds(24, 138, getWidth() - 280, 44);
         connectButton.setBounds(getWidth() - 244, 138, 218, 44);
-        inputs.setBounds(24, 289, getWidth() - 48, 104);
-        midiDevices.setBounds(24, 445, getWidth() - 48, 80);
-        status.setBounds(24, 548, getWidth() - 174, 30);
-        refreshButton.setBounds(getWidth() - 146, 545, 122, 38);
+        inputs.setBounds(24, 289, getWidth() - 48, 64);
+        midiDevices.setBounds(24, 395, getWidth() - 48, 77);
+        noteTrigger.setBounds(24, 510, getWidth() / 2 - 40, 39);
+        ccTrigger.setBounds(getWidth() / 2 + 2, 510, getWidth() / 2 - 26, 39);
+        status.setBounds(24, 628, getWidth() - 174, 38);
+        refreshButton.setBounds(getWidth() - 146, 626, 122, 38);
     }
 private:
     juce::String selectedId() const
@@ -377,7 +398,8 @@ private:
             ? outputs[static_cast<std::size_t>(index)].id : juce::String {};
     }
     std::vector<systemaudio::Capture::Device> outputs;
-    juce::ComboBox output;
+    juce::ComboBox output, noteTrigger, ccTrigger;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> noteAttachment, ccAttachment;
     juce::TextEditor inputs, midiDevices;
     juce::TextButton refreshButton, connectButton;
     juce::Label status;
@@ -489,6 +511,8 @@ void LoopCaptureAudioProcessorEditor::timerCallback()
     sampleMeta.setText(s.hasUsableFile && !busy ? formatTime(seconds) + juce::String::fromUTF8(" · ") + juce::String(s.sampleRate / 1000, 1) + juce::String::fromUTF8(" kHz · 24-bit PCM")
                       : juce::String::fromUTF8("La toma aparecerá aquí al pulsar Stop."), juce::dontSendNotification);
     const auto recording = s.state == capture::State::recording || s.state == capture::State::starting;
+    if (recording && !connected)
+    { connected = true; connectButton.setButtonText("Desconectar"); }
     const bool system = sourceSelect.getSelectedId() == 2;
     const auto systemStatus = processor.systemInputStatus();
     if (system && connected && systemStatus.failed)
@@ -541,7 +565,7 @@ void LoopCaptureAudioProcessorEditor::openConnections()
     if (connectionsWindow == nullptr)
     {
         connectionsWindow = std::make_unique<ConnectionsWindow>();
-        auto panel = std::make_unique<ConnectionsPanel>();
+        auto panel = std::make_unique<ConnectionsPanel>(processor);
         connectionsPanel = panel.get();
         connectionsPanel->onConnect = [this](const juce::String& id)
         {
@@ -563,7 +587,7 @@ void LoopCaptureAudioProcessorEditor::openConnections()
         connectionsWindow->setUsingNativeTitleBar(true);
         connectionsWindow->setLookAndFeel(&lookAndFeel);
         connectionsWindow->setContentOwned(panel.release(), true);
-        connectionsWindow->centreWithSize(720, 650);
+        connectionsWindow->centreWithSize(720, 690);
     }
     connectionsPanel->setLightMode(lightMode);
     connectionsPanel->refresh();
