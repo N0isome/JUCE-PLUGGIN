@@ -14,6 +14,11 @@ y permite guardar el archivo o arrastrarlo a otra pista.
 
 El plugin nativo no necesita navegador. En Windows, el audio del sistema puede capturarse directamente con WASAPI loopback.
 También se puede conectar al DAW mediante un cable virtual o una entrada del driver.
+**Conexiones** abre una ventana adicional que enumera salidas de Windows,
+entradas físicas informativas, estado de conexión y niveles L/R. Desde allí
+puedes elegir y conectar una salida para samplear aplicaciones como MPC en
+modo Windows Audio compartido. Las entradas de una interfaz se seleccionan
+en el DAW: el plugin no controla el driver de FL Studio.
 La demo web usa los permisos de captura del navegador.
 
 **Estado:** VST3 Windows x64 compilado y verificado; pendiente de probar en

@@ -70,6 +70,9 @@ private:
     bool lightMode = false, hovering = false;
 };
 
+class ConnectionsPanel;
+class ConnectionsWindow;
+
 class LoopCaptureAudioProcessorEditor final : public juce::AudioProcessorEditor,
                                               public juce::DragAndDropContainer,
                                               private juce::Timer
@@ -85,6 +88,7 @@ private:
     void saveSample();
     void playSample(const juce::File&);
     void refreshInputDevices();
+    void openConnections();
     std::vector<systemaudio::Capture::Device> inputDevices;
     LoopCaptureAudioProcessor& processor;
     CaptureLookAndFeel lookAndFeel;
@@ -93,12 +97,15 @@ private:
     juce::ToggleButton monitorButton { "Monitorear" };
     juce::TextButton playButton { "Escuchar" }, saveButton { "Guardar como" };
     juce::TextButton revealButton { "Descargar WAV" }, themeButton { "Modo claro" };
+    juce::TextButton connectionsButton { "Conexiones" };
     juce::ComboBox viewSelect, sourceSelect, deviceSelect;
     juce::Label statusLabel, timeLabel, sampleName, sampleMeta;
     StereoPeakMeter meter;
     SampleWaveform waveform, samplePreview;
     TestChannel testChannel;
     std::unique_ptr<juce::FileChooser> saveChooser;
+    std::unique_ptr<ConnectionsWindow> connectionsWindow;
+    ConnectionsPanel* connectionsPanel = nullptr; // owned by the window
     bool lightMode = false, mesaView = false, saving = false, connected = false;
     juce::String exportMessage;
     juce::Rectangle<int> consoleArea, gainArea, mainArea;

@@ -9,6 +9,9 @@ audífonos, interfaces USB y salidas HDMI, entre otros. No cambia el driver ASIO
 
 1. Inserta el plugin en un insert dedicado del Mixer, con el motor de FL activo.
 2. En Fuente elige **Audio sistema (Windows)**.
+   El botón **Conexiones** abre una ventana con las salidas compartidas detectadas,
+   las entradas físicas informativas, el estado de conexión y niveles L/R.
+   Elige una salida y pulsa **Usar esta salida** para conectarla desde la ventana.
 3. En Dispositivo elige la misma salida que utiliza Chrome o la aplicación fuente.
    **Salida predeterminada** resuelve la salida multimedia actual al conectar.
 4. Pulsa **Conectar**. Espera el mensaje `Capturando: ...`.
@@ -34,6 +37,10 @@ otra toma. No se cambia silenciosamente a la entrada del DAW.
 - Windows 10/11, salida en modo **compartido**. WASAPI loopback no captura flujos
   exclusivos ni la ruta ASIO privada de otro programa. La tarjeta debe exponer una
   salida al sistema Windows; un dispositivo exclusivamente ASIO no aparecerá.
+- La lista de entradas físicas es informativa: el VST3 no puede abrir o cambiar
+  las entradas de la interfaz que administra FL Studio. Selecciona esa entrada
+  en el Mixer de FL y usa **Entrada del DAW / cable** para grabar una MPC física.
+  La lista de salidas describe dispositivos, no identifica qué aplicación los usa.
 - El motor del DAW debe seguir ejecutando el plugin. En FL desactiva **Smart disable**
   en este wrapper si el host suspende el procesamiento durante el silencio.
 - Audio protegido puede quedar silenciado por el sistema. No se omiten estas restricciones.

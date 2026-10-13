@@ -185,10 +185,10 @@ struct Apartment
     HRESULT result = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     ~Apartment() { if (SUCCEEDED(result)) CoUninitialize(); }
 };
-juce::String nameOf(IMMDevice* device)
+juce::String nameOf(IMMDevice* device, const juce::String& fallback = "Salida de Windows")
 {
     ComPtr<IPropertyStore> properties; PROPVARIANT value; PropVariantInit(&value);
-    juce::String name("Salida de Windows");
+    juce::String name(fallback);
     if (SUCCEEDED(device->OpenPropertyStore(STGM_READ, properties.out()))
         && SUCCEEDED(properties->GetValue(friendlyNameKey, &value)) && value.vt == VT_LPWSTR)
         name = juce::String(value.pwszVal);
@@ -196,9 +196,11 @@ juce::String nameOf(IMMDevice* device)
 }
 }
 #endif
-std::vector<Capture::Device> Capture::devices(juce::String& error)
+namespace
 {
-    std::vector<Device> result; error.clear();
+std::vector<Capture::Device> listDevices(bool inputs, juce::String& error)
+{
+    std::vector<Capture::Device> result; error.clear();
 #if JUCE_WINDOWS
     Apartment apartment;
     if (FAILED(apartment.result) && apartment.result != RPC_E_CHANGED_MODE)
@@ -206,21 +208,25 @@ std::vector<Capture::Device> Capture::devices(juce::String& error)
     ComPtr<IMMDeviceEnumerator> enumerator; ComPtr<IMMDeviceCollection> collection;
     HRESULT hr = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL,
                                   __uuidof(IMMDeviceEnumerator), reinterpret_cast<void**>(enumerator.out()));
-    if (SUCCEEDED(hr)) hr = enumerator->EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE, collection.out());
+    if (SUCCEEDED(hr)) hr = enumerator->EnumAudioEndpoints(inputs ? eCapture : eRender, DEVICE_STATE_ACTIVE, collection.out());
     UINT count = 0;
     if (SUCCEEDED(hr)) hr = collection->GetCount(&count);
-    if (FAILED(hr)) { error = "No se pudieron listar las salidas de Windows."; return result; }
+    if (FAILED(hr)) { error = inputs ? "No se pudieron listar las entradas de Windows." : "No se pudieron listar las salidas de Windows."; return result; }
     for (UINT i = 0; i < count; ++i)
     {
         ComPtr<IMMDevice> device; LPWSTR id = nullptr;
         if (SUCCEEDED(collection->Item(i, device.out())) && SUCCEEDED(device->GetId(&id)))
-        { result.push_back({ juce::String(id), nameOf(device.ptr) }); CoTaskMemFree(id); }
+        { result.push_back({ juce::String(id), nameOf(device.ptr, inputs ? "Entrada de Windows" : "Salida de Windows") }); CoTaskMemFree(id); }
     }
 #else
+    juce::ignoreUnused(inputs);
     error = "En macOS elige un cable virtual en la entrada del DAW.";
 #endif
     return result;
 }
+}
+std::vector<Capture::Device> Capture::devices(juce::String& error) { return listDevices(false, error); }
+std::vector<Capture::Device> Capture::captureDevices(juce::String& error) { return listDevices(true, error); }
 void Capture::run()
 {
     consumerGate.state.store(capture::State::idle);

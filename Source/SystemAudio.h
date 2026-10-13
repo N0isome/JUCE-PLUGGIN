@@ -23,6 +23,7 @@ public:
     ~Capture() override;
     static bool supported() noexcept;
     static std::vector<Device> devices(juce::String& error); // control thread only
+    static std::vector<Device> captureDevices(juce::String& error); // informational; inputs are routed by the DAW
     bool start(const juce::String& id); // empty ID resolves current default on connect
     void stop(); // control thread, joins; never from processBlock
     void requestStop() noexcept;

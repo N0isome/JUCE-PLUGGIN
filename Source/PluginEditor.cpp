@@ -258,6 +258,127 @@ void TestChannel::filesDropped(const juce::StringArray& files, int, int)
     repaint();
 }
 
+class ConnectionsPanel final : public juce::Component
+{
+public:
+    ConnectionsPanel()
+    {
+        addAndMakeVisible(output);
+        addAndMakeVisible(inputs);
+        addAndMakeVisible(refreshButton);
+        addAndMakeVisible(connectButton);
+        addAndMakeVisible(status);
+        inputs.setMultiLine(true); inputs.setReadOnly(true); inputs.setCaretVisible(false);
+        inputs.setScrollbarsShown(true); inputs.setFont(uiFont(14));
+        status.setFont(uiFont(14)); status.setJustificationType(juce::Justification::centredLeft);
+        refreshButton.setButtonText("Actualizar");
+        connectButton.setButtonText("Usar esta salida");
+        refreshButton.onClick = [this] { refresh(); };
+        connectButton.onClick = [this]
+        {
+            const int index = output.getSelectedId() - 2;
+            const auto id = index >= 0 && index < static_cast<int>(outputs.size())
+                ? outputs[static_cast<std::size_t>(index)].id : juce::String {};
+            if (onConnect && !onConnect(id)) status.setText("No se pudo conectar. Revisa el estado del dispositivo.", juce::dontSendNotification);
+        };
+        refresh();
+    }
+    std::function<bool(const juce::String&)> onConnect;
+    void refresh()
+    {
+        const auto previous = selectedId();
+        juce::String outputError, inputError;
+        outputs = systemaudio::Capture::devices(outputError);
+        const auto physicalInputs = systemaudio::Capture::captureDevices(inputError);
+        output.clear(juce::dontSendNotification);
+        output.addItem("Salida predeterminada de Windows", 1);
+        int selected = 1;
+        for (std::size_t i = 0; i < outputs.size(); ++i)
+        {
+            output.addItem(outputs[i].name, static_cast<int>(i) + 2);
+            if (outputs[i].id == previous) selected = static_cast<int>(i) + 2;
+        }
+        output.setSelectedId(selected, juce::dontSendNotification);
+        juce::String list;
+        if (physicalInputs.empty()) list = inputError.isNotEmpty() ? inputError : "No hay entradas activas de Windows.";
+        else for (const auto& device : physicalInputs) list += juce::String::fromUTF8("• ") + device.name + "\n";
+        inputs.setText(list.trimEnd(), false);
+        if (outputError.isNotEmpty()) status.setText(outputError, juce::dontSendNotification);
+        repaint();
+    }
+    void setSelectedOutput(const juce::String& id)
+    {
+        int selected = 1;
+        for (std::size_t i = 0; i < outputs.size(); ++i)
+            if (outputs[i].id == id) selected = static_cast<int>(i) + 2;
+        output.setSelectedId(selected, juce::dontSendNotification);
+    }
+    void updateStatus(bool systemMode, bool connected, const systemaudio::Capture::Status& state,
+                      std::array<float, 2> peaks, bool recording)
+    {
+        const auto busy = recording;
+        connectButton.setEnabled(!busy && systemaudio::Capture::supported());
+        output.setEnabled(!busy && systemaudio::Capture::supported());
+        if (state.failed) status.setText(state.message, juce::dontSendNotification);
+        else if (systemMode && connected) status.setText((state.active ? "Capturando: " : "Conectando: ")
+            + output.getText() + "  ·  L " + juce::String(juce::Decibels::gainToDecibels(peaks[0], -90.0f), 0)
+            + " dB  R " + juce::String(juce::Decibels::gainToDecibels(peaks[1], -90.0f), 0) + " dB", juce::dontSendNotification);
+        else status.setText("Selecciona una salida compartida y pulsa Usar esta salida.", juce::dontSendNotification);
+    }
+    void setLightMode(bool b)
+    {
+        lightMode = b; auto c = palette(b);
+        inputs.setColour(juce::TextEditor::backgroundColourId, c.field);
+        inputs.setColour(juce::TextEditor::textColourId, c.text);
+        inputs.setColour(juce::TextEditor::outlineColourId, c.line);
+        status.setColour(juce::Label::textColourId, c.muted);
+        repaint();
+    }
+    void paint(juce::Graphics& g) override
+    {
+        auto c = palette(lightMode); g.fillAll(c.panel);
+        text(g, "Conexiones de audio", { 24, 17, getWidth() - 48, 38 }, 28, c.text);
+        text(g, "SALIDAS DE WINDOWS · CAPTURA DIRECTA", { 24, 72, getWidth() - 48, 24 }, 12, c.accent, true);
+        text(g, "Elige la salida por donde suenan MPC, juegos u otras aplicaciones.", { 24, 100, getWidth() - 48, 25 }, 15, c.muted);
+        g.setColour(c.line); g.drawHorizontalLine(204, 24, static_cast<float>(getWidth() - 24));
+        text(g, "ENTRADAS FÍSICAS DETECTADAS", { 24, 215, getWidth() - 48, 24 }, 12, c.accent, true);
+        text(g, "Micrófonos y entradas de interfaces: selecciónalas en FL Studio y usa Entrada del DAW / cable.",
+             { 24, 240, getWidth() - 48, 40 }, 14, c.muted);
+        g.setColour(c.line); g.drawHorizontalLine(405, 24, static_cast<float>(getWidth() - 24));
+        text(g, "ASIO exclusivo y audio de una MPC física sin conexión al PC no aparecen en la mezcla de Windows.",
+             { 24, 452, getWidth() - 48, 40 }, 13, c.muted);
+    }
+    void resized() override
+    {
+        output.setBounds(24, 138, getWidth() - 280, 44);
+        connectButton.setBounds(getWidth() - 244, 138, 218, 44);
+        inputs.setBounds(24, 289, getWidth() - 48, 104);
+        status.setBounds(24, 413, getWidth() - 174, 30);
+        refreshButton.setBounds(getWidth() - 146, 410, 122, 38);
+    }
+private:
+    juce::String selectedId() const
+    {
+        const int index = output.getSelectedId() - 2;
+        return index >= 0 && index < static_cast<int>(outputs.size())
+            ? outputs[static_cast<std::size_t>(index)].id : juce::String {};
+    }
+    std::vector<systemaudio::Capture::Device> outputs;
+    juce::ComboBox output;
+    juce::TextEditor inputs;
+    juce::TextButton refreshButton, connectButton;
+    juce::Label status;
+    bool lightMode = false;
+};
+
+class ConnectionsWindow final : public juce::DocumentWindow
+{
+public:
+    ConnectionsWindow() : juce::DocumentWindow("Conexiones · JUCE PLUGGIN",
+        juce::Colour(0xff292630), juce::DocumentWindow::closeButton, true) {}
+    void closeButtonPressed() override { setVisible(false); }
+};
+
 LoopCaptureAudioProcessorEditor::LoopCaptureAudioProcessorEditor(LoopCaptureAudioProcessor& p)
     : AudioProcessorEditor(&p), processor(p), waveform(p), samplePreview(p, true)
 {
@@ -295,6 +416,7 @@ LoopCaptureAudioProcessorEditor::LoopCaptureAudioProcessorEditor(LoopCaptureAudi
          &connectButton, &monitorButton, &playButton, &revealButton, &saveButton, &themeButton, &viewSelect,
          &sourceSelect, &deviceSelect, &statusLabel, &timeLabel, &sampleName, &sampleMeta, &meter, &waveform, &samplePreview })
         addAndMakeVisible(component);
+    addAndMakeVisible(connectionsButton);
     addAndMakeVisible(testChannel);
     gainAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(p.parameters, "inputGain", inputGain);
     rangeAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(p.parameters, "inputGain", gainRange);
@@ -324,6 +446,7 @@ LoopCaptureAudioProcessorEditor::LoopCaptureAudioProcessorEditor(LoopCaptureAudi
     revealButton.setTooltip("Exportar el WAV a la carpeta que elijas.");
     saveButton.onClick = [this] { saveSample(); };
     themeButton.onClick = [this] { lightMode = !lightMode; applyTheme(); };
+    connectionsButton.onClick = [this] { openConnections(); };
     viewSelect.onChange = [this] { mesaView = viewSelect.getSelectedId() == 2; resized(); repaint(); };
     connected = isBusy(processor.getSnapshot().state) || processor.systemInputStatus().active;
     connectButton.setButtonText(connected ? "Desconectar" : "Conectar");
@@ -334,13 +457,15 @@ LoopCaptureAudioProcessorEditor::LoopCaptureAudioProcessorEditor(LoopCaptureAudi
 }
 LoopCaptureAudioProcessorEditor::~LoopCaptureAudioProcessorEditor()
 {
-    stopTimer(); processor.stopPreview(); saveChooser.reset(); monitorAttachment.reset();
+    stopTimer(); connectionsWindow.reset(); connectionsPanel = nullptr;
+    processor.stopPreview(); saveChooser.reset(); monitorAttachment.reset();
     rangeAttachment.reset(); gainAttachment.reset(); setLookAndFeel(nullptr);
 }
 void LoopCaptureAudioProcessorEditor::timerCallback()
 {
     const auto c = palette(lightMode); const auto now = juce::Time::getMillisecondCounterHiRes();
-    meter.update(processor.consumePeaks(), static_cast<float>(juce::jlimit(0.001, 0.25, (now - lastTickMs) / 1000)));
+    const auto peaks = processor.consumePeaks();
+    meter.update(peaks, static_cast<float>(juce::jlimit(0.001, 0.25, (now - lastTickMs) / 1000)));
     lastTickMs = now; const auto s = processor.getSnapshot(); const auto busy = isBusy(s.state);
     waveform.setConnected(connected); waveform.updateScope(); waveform.update(s); waveform.repaint();
     auto completed = s; if (busy) { completed.frames = 0; completed.hasUsableFile = false; }
@@ -355,6 +480,8 @@ void LoopCaptureAudioProcessorEditor::timerCallback()
     const auto systemStatus = processor.systemInputStatus();
     if (system && connected && systemStatus.failed)
     { connected = false; connectButton.setButtonText("Conectar"); }
+    if (connectionsPanel != nullptr && connectionsWindow != nullptr && connectionsWindow->isVisible())
+        connectionsPanel->updateStatus(system, connected, systemStatus, peaks, busy);
     sourceSelect.setEnabled(!busy); deviceSelect.setEnabled(system && !busy);
     monitorButton.setEnabled(!system);
     recordButton.setToggleState(recording, juce::dontSendNotification);
@@ -396,6 +523,42 @@ void LoopCaptureAudioProcessorEditor::refreshInputDevices()
         if (inputDevices[i].id == id) selected = static_cast<int>(i) + 2;
     deviceSelect.setSelectedId(selected, juce::dontSendNotification);
 }
+void LoopCaptureAudioProcessorEditor::openConnections()
+{
+    if (connectionsWindow == nullptr)
+    {
+        connectionsWindow = std::make_unique<ConnectionsWindow>();
+        auto panel = std::make_unique<ConnectionsPanel>();
+        connectionsPanel = panel.get();
+        connectionsPanel->onConnect = [this](const juce::String& id)
+        {
+            if (isBusy(processor.getSnapshot().state)) return false;
+            sourceSelect.setSelectedId(2, juce::sendNotificationSync);
+            refreshInputDevices();
+            int selected = 1;
+            for (std::size_t i = 0; i < inputDevices.size(); ++i)
+                if (inputDevices[i].id == id) selected = static_cast<int>(i) + 2;
+            if (id.isNotEmpty() && selected == 1) return false; // disconnected between scan and click
+            deviceSelect.setSelectedId(selected, juce::sendNotificationSync);
+            if (connected) { processor.disconnectInput(); connected = false; }
+            exportMessage.clear();
+            connected = processor.connectInput(true, id);
+            connectButton.setButtonText(connected ? "Desconectar" : "Conectar");
+            timerCallback();
+            return connected;
+        };
+        connectionsWindow->setUsingNativeTitleBar(true);
+        connectionsWindow->setLookAndFeel(&lookAndFeel);
+        connectionsWindow->setContentOwned(panel.release(), true);
+        connectionsWindow->centreWithSize(720, 520);
+    }
+    connectionsPanel->setLightMode(lightMode);
+    connectionsPanel->refresh();
+    connectionsPanel->setSelectedOutput(processor.getSystemDeviceId());
+    connectionsWindow->setVisible(true);
+    connectionsWindow->toFront(true);
+    timerCallback();
+}
 void LoopCaptureAudioProcessorEditor::playSample(const juce::File& file)
 {
     if (processor.isPreviewPlaying()) processor.stopPreview();
@@ -409,6 +572,7 @@ void LoopCaptureAudioProcessorEditor::applyTheme()
     for (auto* label : { &statusLabel, &sampleMeta }) label->setColour(juce::Label::textColourId, c.muted);
     sampleName.setColour(juce::Label::textColourId, c.text); timeLabel.setColour(juce::Label::textColourId, juce::Colour(0xffeae2f5));
     themeButton.setButtonText(lightMode ? "Modo oscuro" : "Modo claro"); sendLookAndFeelChange(); repaint();
+    if (connectionsPanel != nullptr) connectionsPanel->setLightMode(lightMode);
 }
 void LoopCaptureAudioProcessorEditor::saveSample()
 {
@@ -472,6 +636,7 @@ void LoopCaptureAudioProcessorEditor::paint(juce::Graphics& g)
 void LoopCaptureAudioProcessorEditor::resized()
 {
     themeButton.setBounds(getWidth() - 132, 24, 108, 44); viewSelect.setBounds(getWidth() - 248, 24, 108, 44);
+    connectionsButton.setBounds(getWidth() - 382, 24, 126, 44);
     sourceSelect.setBounds(24, 181, 220, 44); deviceSelect.setBounds(24, 264, 220, 44); connectButton.setBounds(24, 322, 220, 44);
     if (!mesaView)
     {
