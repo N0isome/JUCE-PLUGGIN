@@ -48,12 +48,9 @@ endif()
 if(LOOPCAPTURE_STANDALONE)
     list(APPEND PLUGIN_FORMATS Standalone)
 endif()
-set(LOOPCAPTURE_PLUGIN_EXTRA_ARGS "")
-if(CMAKE_CROSSCOMPILING AND WIN32)
-    # A Windows executable cannot inspect the binary on a Linux build host.
-    # moduleinfo.json is optional; hosts discover the exported VST3 factory.
-    list(APPEND LOOPCAPTURE_PLUGIN_EXTRA_ARGS VST3_AUTO_MANIFEST FALSE)
-endif()
+# JUCE 7's manifest helper can emit trailing commas (invalid JSON). The
+# manifest is optional: VST3 hosts discover the exported plugin factory.
+# Also avoids invoking a Windows helper executable during cross-compilation.
 juce_add_plugin(LoopCapture
     COMPANY_NAME "Cortez Audio"
     BUNDLE_ID "cl.cortezaudio.loopcapture"
@@ -70,11 +67,11 @@ juce_add_plugin(LoopCapture
     IS_MIDI_EFFECT FALSE
     EDITOR_WANTS_KEYBOARD_FOCUS FALSE
     VST3_CATEGORIES Fx Tools
+    VST3_AUTO_MANIFEST FALSE
     AU_MAIN_TYPE kAudioUnitType_Effect
     MICROPHONE_PERMISSION_ENABLED TRUE
     MICROPHONE_PERMISSION_TEXT "JUCE PLUGGIN receives audio from your selected input device."
-    COPY_PLUGIN_AFTER_BUILD ${LOOPCAPTURE_COPY_PLUGIN}
-    ${LOOPCAPTURE_PLUGIN_EXTRA_ARGS})
+    COPY_PLUGIN_AFTER_BUILD ${LOOPCAPTURE_COPY_PLUGIN})
 juce_generate_juce_header(LoopCapture)
 juce_add_binary_data(LoopCaptureBranding
     NAMESPACE PluginBranding

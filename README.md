@@ -99,6 +99,9 @@ mediante el wrapper de JUCE.
   al host. El callback solo solicita alternar la toma con un contador atómico;
   el worker inicia o cierra el WAV aunque el editor esté cerrado. Los mensajes
   MIDI recibidos se consumen, no se reenvían a instrumentos posteriores.
+- La generación de `moduleinfo.json` está desactivada: el generador de JUCE 7
+  produce comas finales inválidas. El VST3 sigue exportando su fábrica para el
+  escaneo del host; el manifiesto es opcional.
 - La grabación es **posterior a Input Gain y anterior al mute de Monitor**.
   El audio por encima de 0 dBFS satura al convertirse a PCM; el indicador CLIP
   queda visible un segundo. Reduce Input Gain si aparece.
