@@ -1,6 +1,16 @@
 # JUCE PLUGGIN
 
-**BY FR3DO - Demo en pañales**
+**BY FR3DO 
+**BY FR3DO 
+**BY FR3DO 
+**BY FR3DO 
+**BY FR3DO 
+**BY FR3DO 
+
+
+
+
+
 
 Grabador de muestras estéreo para usar como efecto dentro de un DAW. Recibe
 el audio del canal, aplica ganancia, permite monitorear y escribe la toma
