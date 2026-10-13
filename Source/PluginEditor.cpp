@@ -265,11 +265,14 @@ public:
     {
         addAndMakeVisible(output);
         addAndMakeVisible(inputs);
+        addAndMakeVisible(midiDevices);
         addAndMakeVisible(refreshButton);
         addAndMakeVisible(connectButton);
         addAndMakeVisible(status);
         inputs.setMultiLine(true); inputs.setReadOnly(true); inputs.setCaretVisible(false);
         inputs.setScrollbarsShown(true); inputs.setFont(uiFont(14));
+        midiDevices.setMultiLine(true); midiDevices.setReadOnly(true); midiDevices.setCaretVisible(false);
+        midiDevices.setScrollbarsShown(true); midiDevices.setFont(uiFont(14));
         status.setFont(uiFont(14)); status.setJustificationType(juce::Justification::centredLeft);
         refreshButton.setButtonText("Actualizar");
         connectButton.setButtonText("Usar esta salida");
@@ -303,6 +306,10 @@ public:
         if (physicalInputs.empty()) list = inputError.isNotEmpty() ? inputError : "No hay entradas activas de Windows.";
         else for (const auto& device : physicalInputs) list += juce::String::fromUTF8("• ") + device.name + "\n";
         inputs.setText(list.trimEnd(), false);
+        juce::String midiList;
+        for (const auto& midi : juce::MidiInput::getAvailableDevices())
+            midiList += juce::String::fromUTF8("• ") + midi.name + "\n";
+        midiDevices.setText(midiList.isEmpty() ? "No se detectaron controladores MIDI." : midiList.trimEnd(), false);
         if (outputError.isNotEmpty()) status.setText(outputError, juce::dontSendNotification);
         repaint();
     }
@@ -331,6 +338,9 @@ public:
         inputs.setColour(juce::TextEditor::backgroundColourId, c.field);
         inputs.setColour(juce::TextEditor::textColourId, c.text);
         inputs.setColour(juce::TextEditor::outlineColourId, c.line);
+        midiDevices.setColour(juce::TextEditor::backgroundColourId, c.field);
+        midiDevices.setColour(juce::TextEditor::textColourId, c.text);
+        midiDevices.setColour(juce::TextEditor::outlineColourId, c.line);
         status.setColour(juce::Label::textColourId, c.muted);
         repaint();
     }
@@ -345,16 +355,19 @@ public:
         text(g, "Micrófonos y entradas de interfaces: selecciónalas en FL Studio y usa Entrada del DAW / cable.",
              { 24, 240, getWidth() - 48, 40 }, 14, c.muted);
         g.setColour(c.line); g.drawHorizontalLine(405, 24, static_cast<float>(getWidth() - 24));
-        text(g, "ASIO exclusivo y audio de una MPC física sin conexión al PC no aparecen en la mezcla de Windows.",
-             { 24, 452, getWidth() - 48, 40 }, 13, c.muted);
+        text(g, "CONTROLADORES MIDI DETECTADOS", { 24, 416, getWidth() - 48, 24 }, 12, c.accent, true);
+        g.setColour(c.line); g.drawHorizontalLine(538, 24, static_cast<float>(getWidth() - 24));
+        text(g, "Un dispositivo MIDI conectado no implica que su audio llegue a Windows. ASIO exclusivo tampoco entra en esta captura.",
+             { 24, 582, getWidth() - 48, 48 }, 13, c.muted);
     }
     void resized() override
     {
         output.setBounds(24, 138, getWidth() - 280, 44);
         connectButton.setBounds(getWidth() - 244, 138, 218, 44);
         inputs.setBounds(24, 289, getWidth() - 48, 104);
-        status.setBounds(24, 413, getWidth() - 174, 30);
-        refreshButton.setBounds(getWidth() - 146, 410, 122, 38);
+        midiDevices.setBounds(24, 445, getWidth() - 48, 80);
+        status.setBounds(24, 548, getWidth() - 174, 30);
+        refreshButton.setBounds(getWidth() - 146, 545, 122, 38);
     }
 private:
     juce::String selectedId() const
@@ -365,7 +378,7 @@ private:
     }
     std::vector<systemaudio::Capture::Device> outputs;
     juce::ComboBox output;
-    juce::TextEditor inputs;
+    juce::TextEditor inputs, midiDevices;
     juce::TextButton refreshButton, connectButton;
     juce::Label status;
     bool lightMode = false;
@@ -550,7 +563,7 @@ void LoopCaptureAudioProcessorEditor::openConnections()
         connectionsWindow->setUsingNativeTitleBar(true);
         connectionsWindow->setLookAndFeel(&lookAndFeel);
         connectionsWindow->setContentOwned(panel.release(), true);
-        connectionsWindow->centreWithSize(720, 520);
+        connectionsWindow->centreWithSize(720, 650);
     }
     connectionsPanel->setLightMode(lightMode);
     connectionsPanel->refresh();

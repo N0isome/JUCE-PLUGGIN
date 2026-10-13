@@ -10,7 +10,7 @@ audífonos, interfaces USB y salidas HDMI, entre otros. No cambia el driver ASIO
 1. Inserta el plugin en un insert dedicado del Mixer, con el motor de FL activo.
 2. En Fuente elige **Audio sistema (Windows)**.
    El botón **Conexiones** abre una ventana con las salidas compartidas detectadas,
-   las entradas físicas informativas, el estado de conexión y niveles L/R.
+   las entradas físicas y controladores MIDI informativos, el estado de conexión y niveles L/R.
    Elige una salida y pulsa **Usar esta salida** para conectarla desde la ventana.
 3. En Dispositivo elige la misma salida que utiliza Chrome o la aplicación fuente.
    **Salida predeterminada** resuelve la salida multimedia actual al conectar.
@@ -41,6 +41,8 @@ otra toma. No se cambia silenciosamente a la entrada del DAW.
   las entradas de la interfaz que administra FL Studio. Selecciona esa entrada
   en el Mixer de FL y usa **Entrada del DAW / cable** para grabar una MPC física.
   La lista de salidas describe dispositivos, no identifica qué aplicación los usa.
+  Ver una MPC como controlador MIDI indica comunicación MIDI, no que su audio
+  esté siendo enviado a la salida de Windows.
 - El motor del DAW debe seguir ejecutando el plugin. En FL desactiva **Smart disable**
   en este wrapper si el host suspende el procesamiento durante el silencio.
 - Audio protegido puede quedar silenciado por el sistema. No se omiten estas restricciones.
